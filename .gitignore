@@ -1,9 +1,14 @@
 # --- Python ---
-venv/               # Thư mục môi trường ảo
-.venv/              # Thư mục môi trường ảo (phổ biến)
-__pycache__/        # File cache biên dịch của Python
-*.py[cod]           # Các file bytecode
-*.env               # File chứa biến môi trường nhạy cảm
+venv/
+.venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.env
+
+# --- AI Models ---
+*.task
+backend/*.task
 
 # --- Node / Frontend (Dự phòng) ---
 node_modules/       # Thư mục thư viện Node.js

@@ -1,174 +1,327 @@
 /* Game Style: Shinobi Vision Battle */
 
+/* ===== BIẾN MÀU SẮC & FONT CHỮ ===== */
 :root {
-    --naruto-orange: #ff6700;
-    --naruto-black: #1a1a1a;
-    --hp-red: #cc0000;
-    --cooldown-color: rgba(0, 0, 0, 0.6);
+    --primary-orange: #FF9900;
+    --dark-bg: #1A1A1A;
+    --panel-bg: rgba(30, 30, 30, 0.85);
+    --text-light: #F0F0F0;
+    --hp-player: #39FF14;
+    --hp-enemy: #FF003C;
+    --border-radius: 8px;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
 }
 
 body {
-    background-color: var(--naruto-black);
-    color: white;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    margin: 0;
-    padding: 0;
+    font-family: 'Poppins', sans-serif;
+    background: url('assets/images/bg_naruto.png') center/cover fixed, var(--dark-bg);
+    color: var(--text-light);
     display: flex;
     justify-content: center;
     align-items: center;
     height: 100vh;
+    overflow: hidden;
 }
 
+/* ===== BỐ CỤC CHÍNH ===== */
 .game-container {
     display: flex;
-    width: 95%;
-    max-width: 1200px;
-    height: 85vh;
-    gap: 20px;
-    background: rgba(40, 40, 40, 0.9);
-    padding: 20px;
-    border-radius: 15px;
-    border: 2px solid var(--naruto-orange);
-    box-shadow: 0 0 30px rgba(255, 103, 0, 0.3);
+    width: 95vw;
+    height: 90vh;
+    max-width: 1400px;
+    gap: 5%;
 }
 
-/* Khối Vision (Webcam) */
-.vision-section {
-    flex: 1.5;
+.left-panel {
+    flex: 0 0 60%;
     display: flex;
     flex-direction: column;
     gap: 15px;
 }
 
-.webcam-wrapper {
+.right-panel {
+    flex: 0 0 35%;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    background: var(--panel-bg);
+    padding: 20px;
+    border-radius: var(--border-radius);
+    border: 2px solid var(--primary-orange);
+    box-shadow: 0 0 20px rgba(255, 153, 0, 0.2);
+}
+
+/* ===== KHU VỰC BÊN TRÁI (CAMERA) ===== */
+.video-container {
     position: relative;
-    background: #000;
-    border-radius: 10px;
+    width: 100%;
+    aspect-ratio: 4/3;
+    border: 4px solid var(--primary-orange);
+    border-radius: var(--border-radius);
     overflow: hidden;
-    flex-grow: 1;
+    background: #000;
+    box-shadow: 0 0 15px rgba(255, 153, 0, 0.4);
 }
 
 #webcam, #skeleton-overlay {
     position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
 }
 
-/* Khối UI (Stats, Skills, Log) */
-.ui-section {
-    flex: 1;
+/* Nút bấm điều khiển */
+.controls-container {
     display: flex;
-    flex-direction: column;
-    gap: 20px;
+    gap: 10px;
+    justify-content: center;
+}
+
+.ninja-btn {
+    font-family: 'Poppins', sans-serif;
+    font-weight: 800;
+    padding: 12px 24px;
+    background: var(--primary-orange);
+    color: #000;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+.ninja-btn:hover {
+    background: #FFAA33;
+    transform: scale(1.05);
+}
+.ninja-btn.danger {
+    background: rgba(0, 0, 0, 0.8); /* Lót nền đen đậm để che ảnh nền phía sau */
+    color: #ff4444; /* Màu đỏ sáng hơn để dễ đọc */
+    border: 2px solid #ff4444;
+    text-shadow: 2px 2px 4px #000; /* Phủ bóng đen cho chữ cực kỳ nổi bật */
+}
+.ninja-btn.danger:hover {
+    background: #ff4444;
+    color: #fff;
+    text-shadow: none;
+}
+
+.story-box {
+    background: rgba(0, 0, 0, 0.7);
+    padding: 15px;
+    border-left: 4px solid var(--primary-orange);
+    font-style: italic;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+.hidden { display: none !important; }
+
+/* ===== KHU VỰC BÊN PHẢI (UI) ===== */
+.game-title {
+    font-family: 'Press Start 2P', cursive;
+    font-size: 1.2rem;
+    color: var(--primary-orange);
+    text-align: center;
+    text-shadow: 2px 2px 0px #000;
+    margin-bottom: 10px;
 }
 
 /* Thanh máu */
-.hp-bar-wrapper {
-    margin-bottom: 15px;
+.health-board {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
 }
 
-.hp-bar {
+.character-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.char-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+.avatar-img {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--primary-orange);
+    box-shadow: 0 0 8px rgba(255, 153, 0, 0.4);
+}
+
+.health-bar-bg {
     width: 100%;
-    height: 30px;
+    height: 25px;
     background: #333;
-    border: 2px solid black;
-    border-radius: 5px;
+    border: 2px solid #000;
+    border-radius: 12px;
+    position: relative;
     overflow: hidden;
-    margin-top: 5px;
 }
 
-.hp-fill {
+.health-fill {
     height: 100%;
-    background: var(--hp-red);
-    text-align: center;
-    line-height: 26px;
-    font-weight: bold;
-    transition: width 0.3s ease-in-out;
+    width: 100%;
+    transition: width 0.3s ease-out, background-color 0.3s;
 }
 
-.hp-fill.enemy {
-    background: #800080; /* Màu tím cho boss */
+.player-hp { background: var(--hp-player); }
+.enemy-hp { background: var(--hp-enemy); }
+
+.hp-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 0.8rem;
+    font-weight: 800;
+    color: #fff;
+    text-shadow: 1px 1px 2px #000;
 }
 
 /* Kỹ năng */
-.skills-container {
+.skills-board {
     display: flex;
     justify-content: space-around;
-    gap: 10px;
+    padding: 15px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.skill-slot {
+.skill {
     position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
     width: 80px;
-    height: 100px;
-    background: #444;
-    border: 2px solid var(--naruto-orange);
-    border-radius: 10px;
-    text-align: center;
-    cursor: pointer;
-    transition: transform 0.2s;
 }
 
-.skill-slot:hover {
+.skill-icon-img {
+    width: 60px;
+    height: 60px;
+    border: 2px solid var(--primary-orange);
+    border-radius: 50%;
+    object-fit: cover;
+    transition: transform 0.2s, box-shadow 0.2s;
+    background: #000;
+}
+
+.skill:hover .skill-icon-img {
     transform: scale(1.1);
-    background: #555;
+    box-shadow: 0 0 15px rgba(255, 153, 0, 0.8);
 }
 
-.skill-slot .icon {
-    font-size: 40px;
-    margin-top: 10px;
+.skill-name {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-align: center;
 }
 
-.skill-slot span {
-    font-size: 10px;
-    display: block;
-    margin-top: 5px;
+.skill-count {
+    font-size: 0.7rem;
+    color: var(--primary-orange);
+    font-weight: bold;
 }
 
-/* Hiệu ứng Cooldown */
+/* Lớp phủ Cooldown */
 .cooldown-overlay {
     position: absolute;
     top: 0;
-    left: 0;
-    width: 100%;
-    height: 0%; /* JS sẽ thay đổi từ 100% về 0% */
-    background: var(--cooldown-color);
-    border-radius: 8px;
+    left: 10px; /* Căn giữa theo skill-icon width 60px trong skill width 80px */
+    width: 60px;
+    height: 60px;
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #fff;
+    z-index: 10;
 }
 
-/* Nhật ký Log */
-.battle-log {
-    background: rgba(0, 0, 0, 0.7);
-    border-radius: 8px;
-    padding: 10px;
+/* Nhật ký trận đánh */
+.log-board {
     flex-grow: 1;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0; /* Quan trọng để cuộn hoạt động trong flex */
+}
+
+.log-title {
     font-size: 0.9rem;
-    border: 1px solid #444;
+    color: var(--primary-orange);
+    margin-bottom: 10px;
+    text-transform: uppercase;
+}
+
+.log-area {
+    flex-grow: 1;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 4px;
+    padding: 10px;
+    overflow-y: auto;
+    font-size: 0.85rem;
+    font-family: monospace;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
 }
 
 .log-entry {
-    margin-bottom: 5px;
-    border-left: 3px solid var(--naruto-orange);
-    padding-left: 8px;
-}
-
-/* Cốt truyện ẩn/hiện */
-.hidden { display: none; }
-#story-content {
-    background: rgba(255, 103, 0, 0.1);
-    padding: 10px;
-    border-radius: 5px;
-    margin-top: 5px;
-    font-size: 0.8rem;
-}
 
 /* Animations & Feedback */
 .skill-slot.active {
-    box-shadow: 0 0 20px #fff;
-    transform: scale(1.1);
-    background: var(--naruto-orange);
+    background: rgba(255, 103, 0, 0.3);
+    border-color: #fff;
+}
+
+/* HIỆU ỨNG RUNG LẮC (SCREEN SHAKE) */
+@keyframes shake {
+  0% { transform: translate(1px, 1px) rotate(0deg); }
+  10% { transform: translate(-1px, -2px) rotate(-1deg); }
+  20% { transform: translate(-3px, 0px) rotate(1deg); }
+  30% { transform: translate(3px, 2px) rotate(0deg); }
+  40% { transform: translate(1px, -1px) rotate(1deg); }
+  50% { transform: translate(-1px, 2px) rotate(-1deg); }
+  60% { transform: translate(-3px, 1px) rotate(0deg); }
+  70% { transform: translate(3px, 1px) rotate(-1deg); }
+  80% { transform: translate(-1px, -1px) rotate(1deg); }
+  90% { transform: translate(1px, 2px) rotate(0deg); }
+  100% { transform: translate(1px, -2px) rotate(-1deg); }
+}
+
+.shake-effect {
+  animation: shake 0.3s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+/* HIỆU ỨNG CHỚP ĐỎ NHẬN SÁT THƯƠNG */
+.damage-flash {
+  box-shadow: inset 0 0 80px rgba(255, 0, 60, 0.8) !important;
+  border-color: var(--hp-enemy) !important;
+}
+
+/* HIỆU ỨNG LÓE SÁNG KHI TUNG CHIÊU */
+.skill-flash {
+  box-shadow: 0 0 30px var(--primary-orange) !important;
+  transform: scale(1.15) !important;
+  border-color: #fff !important;
 }
 
 .log-entry.success { color: #00ff00; border-left-color: #00ff00; }
