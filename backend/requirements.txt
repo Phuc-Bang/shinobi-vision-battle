@@ -1,0 +1,7 @@
+flask            # Framework web chính cho backend
+flask-socketio   # Hỗ trợ giao tiếp thời gian thực (WebSocket)
+opencv-python    # Xử lý hình ảnh và video từ webcam
+mediapipe        # Thư viện AI của Google để nhận diện bàn tay/xương khớp
+numpy            # Thư viện tính toán ma trận cho dữ liệu hình ảnh
+eventlet         # Web server hiệu năng cao cho SocketIO (khuyên dùng)
+pillow           # Thư viện hỗ trợ xử lý định dạng ảnh

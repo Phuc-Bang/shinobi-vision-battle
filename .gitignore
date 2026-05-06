@@ -1,0 +1,18 @@
+# --- Python ---
+venv/               # Thư mục môi trường ảo
+.venv/              # Thư mục môi trường ảo (phổ biến)
+__pycache__/        # File cache biên dịch của Python
+*.py[cod]           # Các file bytecode
+*.env               # File chứa biến môi trường nhạy cảm
+
+# --- Node / Frontend (Dự phòng) ---
+node_modules/       # Thư mục thư viện Node.js
+dist/               # Thư mục build
+.DS_Store           # File hệ thống macOS
+
+# --- Editor ---
+.vscode/            # Cấu hình riêng của VS Code
+.idea/              # Cấu hình PyCharm
+
+# --- Game Assets ---
+# frontend/assets/images/*  # Có thể bỏ qua nếu không muốn đẩy ảnh nặng lên Git

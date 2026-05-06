@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shinobi Vision Battle - Naruto vs Mizuki</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Thư viện SocketIO Client -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body>
+    <div class="game-container">
+        <!-- Khối bên trái: Camera và Nhận diện AI -->
+        <div class="vision-section">
+            <div class="webcam-wrapper">
+                <video id="webcam" autoplay playsinline></video>
+                <!-- Canvas vẽ các điểm xương khớp tay đè lên video -->
+                <canvas id="skeleton-overlay"></canvas>
+            </div>
+            <div class="story-box" id="story-container">
+                <button id="btn-toggle-story">Xem Cốt Truyện</button>
+                <div id="story-content" class="hidden"></div>
+            </div>
+        </div>
+
+        <!-- Khối bên phải: Chỉ số và Kỹ năng -->
+        <div class="ui-section">
+            <div class="stats-container">
+                <!-- Thanh máu Naruto -->
+                <div class="hp-bar-wrapper">
+                    <label>NARUTO (Player)</label>
+                    <div class="hp-bar" id="player-hp-container">
+                        <div id="player-hp-fill" class="hp-fill" style="width: 100%;">100%</div>
+                    </div>
+                </div>
+
+                <!-- Thanh máu Mizuki -->
+                <div class="hp-bar-wrapper">
+                    <label>MIZUKI (Boss)</label>
+                    <div class="hp-bar" id="enemy-hp-container">
+                        <div id="enemy-hp-fill" class="hp-fill enemy" style="width: 100%;">100%</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Hệ thống kỹ năng -->
+            <div class="skills-container">
+                <div class="skill-slot" id="skill-kage">
+                    <div class="icon">👥</div>
+                    <div class="cooldown-overlay"></div>
+                    <span>Kage Bunshin</span>
+                </div>
+                <div class="skill-slot" id="skill-rasengan">
+                    <div class="icon">🌀</div>
+                    <div class="cooldown-overlay"></div>
+                    <span>Rasengan</span>
+                </div>
+                <div class="skill-slot" id="skill-shuriken">
+                    <div class="icon">🥷</div>
+                    <div class="cooldown-overlay"></div>
+                    <span>Rasenshuriken</span>
+                </div>
+            </div>
+
+            <!-- Nhật ký trận đấu -->
+            <div class="battle-log" id="log">
+                <div class="log-entry">Trận chiến bắt đầu! Hãy kết ấn...</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

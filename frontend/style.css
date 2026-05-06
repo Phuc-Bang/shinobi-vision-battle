@@ -1,0 +1,165 @@
+/* Game Style: Shinobi Vision Battle */
+
+:root {
+    --naruto-orange: #ff6700;
+    --naruto-black: #1a1a1a;
+    --hp-red: #cc0000;
+    --cooldown-color: rgba(0, 0, 0, 0.6);
+}
+
+body {
+    background-color: var(--naruto-black);
+    color: white;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+.game-container {
+    display: flex;
+    width: 95%;
+    max-width: 1200px;
+    height: 85vh;
+    gap: 20px;
+    background: rgba(40, 40, 40, 0.9);
+    padding: 20px;
+    border-radius: 15px;
+    border: 2px solid var(--naruto-orange);
+    box-shadow: 0 0 30px rgba(255, 103, 0, 0.3);
+}
+
+/* Khối Vision (Webcam) */
+.vision-section {
+    flex: 1.5;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.webcam-wrapper {
+    position: relative;
+    background: #000;
+    border-radius: 10px;
+    overflow: hidden;
+    flex-grow: 1;
+}
+
+#webcam, #skeleton-overlay {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* Khối UI (Stats, Skills, Log) */
+.ui-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* Thanh máu */
+.hp-bar-wrapper {
+    margin-bottom: 15px;
+}
+
+.hp-bar {
+    width: 100%;
+    height: 30px;
+    background: #333;
+    border: 2px solid black;
+    border-radius: 5px;
+    overflow: hidden;
+    margin-top: 5px;
+}
+
+.hp-fill {
+    height: 100%;
+    background: var(--hp-red);
+    text-align: center;
+    line-height: 26px;
+    font-weight: bold;
+    transition: width 0.3s ease-in-out;
+}
+
+.hp-fill.enemy {
+    background: #800080; /* Màu tím cho boss */
+}
+
+/* Kỹ năng */
+.skills-container {
+    display: flex;
+    justify-content: space-around;
+    gap: 10px;
+}
+
+.skill-slot {
+    position: relative;
+    width: 80px;
+    height: 100px;
+    background: #444;
+    border: 2px solid var(--naruto-orange);
+    border-radius: 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.skill-slot:hover {
+    transform: scale(1.1);
+    background: #555;
+}
+
+.skill-slot .icon {
+    font-size: 40px;
+    margin-top: 10px;
+}
+
+.skill-slot span {
+    font-size: 10px;
+    display: block;
+    margin-top: 5px;
+}
+
+/* Hiệu ứng Cooldown */
+.cooldown-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 0%; /* JS sẽ thay đổi từ 100% về 0% */
+    background: var(--cooldown-color);
+    border-radius: 8px;
+}
+
+/* Nhật ký Log */
+.battle-log {
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 8px;
+    padding: 10px;
+    flex-grow: 1;
+    overflow-y: auto;
+    font-size: 0.9rem;
+    border: 1px solid #444;
+}
+
+.log-entry {
+    margin-bottom: 5px;
+    border-left: 3px solid var(--naruto-orange);
+    padding-left: 8px;
+}
+
+/* Cốt truyện ẩn/hiện */
+.hidden { display: none; }
+#story-content {
+    background: rgba(255, 103, 0, 0.1);
+    padding: 10px;
+    border-radius: 5px;
+    margin-top: 5px;
+    font-size: 0.8rem;
+}
