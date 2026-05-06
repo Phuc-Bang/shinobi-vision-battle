@@ -163,3 +163,13 @@ body {
     margin-top: 5px;
     font-size: 0.8rem;
 }
+
+/* Animations & Feedback */
+.skill-slot.active {
+    box-shadow: 0 0 20px #fff;
+    transform: scale(1.1);
+    background: var(--naruto-orange);
+}
+
+.log-entry.success { color: #00ff00; border-left-color: #00ff00; }
+.log-entry.victory { color: #ffff00; font-weight: bold; font-size: 1.1rem; }
