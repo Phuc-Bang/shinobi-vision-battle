@@ -103,4 +103,4 @@ if __name__ == '__main__':
     # - port=5000: Cổng mặc định của Flask
     # - debug=True: Tự động tải lại code khi có thay đổi (chỉ dùng khi phát triển)
     print("🔥 Shinobi Server đang khởi động tại cổng 5000...")
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True, allow_unsafe_werkzeug=True)
