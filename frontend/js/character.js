@@ -26,6 +26,11 @@ class Character {
         this.side = side; // 'left' hoặc 'right'
         this.scale = options.scale || 1.0;
         this.flipSprite = options.flipSprite ?? (side === 'right');
+        this.baseFacingRight = options.baseFacingRight ?? false;
+        this.faceTargetX = null;
+        this.faceDeadzone = options.faceDeadzone ?? 24;
+        this.facingRight = this.side === 'left';
+        this.facingLockUntil = 0;
         
         // Chỉ số sinh tồn
         this.maxHp = options.maxHp || 100;
@@ -142,7 +147,18 @@ class Character {
         // Xác định lật ngang: 
         // Đội đứng bên phải ('right') phải quay mặt sang trái (lật hình).
         // Đội đứng bên trái ('left') không cần lật (nhìn thẳng sang phải).
-        const flipHorizontal = this.flipSprite;
+        let flipHorizontal = this.flipSprite;
+        if (typeof this.faceTargetX === 'number') {
+            const dx = this.faceTargetX - this.x;
+            const now = performance.now();
+            if (now >= this.facingLockUntil && Math.abs(dx) > this.faceDeadzone) {
+                this.facingRight = dx > 0;
+            }
+            const shouldFaceRight = this.facingRight;
+            // baseFacingRight=true: ảnh gốc quay sang phải.
+            // baseFacingRight=false: ảnh gốc quay sang trái.
+            flipHorizontal = this.baseFacingRight ? !shouldFaceRight : shouldFaceRight;
+        }
 
         // Mờ nhẹ khi đang né tránh
         if (this.isDodging) {
@@ -215,8 +231,21 @@ class Character {
         this.hitStunTimer = 0;
         this.hitReactionOffsetX = 0;
         this.hitReactionVelocityX = 0;
+        this.facingRight = this.side === 'left';
+        this.facingLockUntil = 0;
         this.x = this.baseX;
         this.setState('idle');
+    }
+
+    lockFacing(ms = 0) {
+        const now = performance.now();
+        this.facingLockUntil = Math.max(this.facingLockUntil, now + Math.max(0, ms));
+    }
+
+    forceFaceTarget(targetX) {
+        if (typeof targetX !== 'number') return;
+        this.faceTargetX = targetX;
+        this.facingRight = targetX > this.x;
     }
 
     applyKnockback(direction, force = 180, hitStunSec = 0.06) {

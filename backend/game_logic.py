@@ -28,7 +28,7 @@ class GameState:
         self.event_seq = 0
 
         # Cấu hình AI của Boss (Mizuki)
-        self.next_bot_attack_time = time.time() + 3.0 # Tấn công sau 3 giây
+        self.next_bot_attack_time = time.time() + 4.0 # Tấn công sau 4 giây
         self.bot_last_action = ""
 
         self.game_over = False
@@ -103,8 +103,8 @@ class GameState:
         if self.game_over or now < self.next_bot_attack_time:
             return result
 
-        # Tính toán lần tấn công tiếp theo (Random từ 2.5s đến 3.5s)
-        self.next_bot_attack_time = now + random.uniform(2.5, 3.5)
+        # Tính toán lần tấn công tiếp theo (Random từ 4s đến 5.5s)
+        self.next_bot_attack_time = now + random.uniform(4.0, 5.5)
         
         # Boss ném Kunai (Sát thương 10)
         bot_damage = 10

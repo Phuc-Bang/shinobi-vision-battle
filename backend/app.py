@@ -7,6 +7,11 @@ Mô tả: Server WebSocket xử lý luồng ảnh thời gian thực cho game Sh
 import base64
 import cv2
 import numpy as np
+import time
+import os
+import threading
+from collections import deque
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from flask import Flask, request
 from flask_socketio import SocketIO, emit
 from gesture_detector import process_frame # Import trực tiếp hàm xử lý từ AI
@@ -25,15 +30,72 @@ socketio = SocketIO(
 
 frame_count = 0 # Biến đếm để log
 games = {} # Trạng thái game riêng theo từng Socket.IO client
+client_runtime = {}  # Theo dõi tốc độ xử lý theo từng client
+game_locks = {}
+pending_futures = {}
+pending_start_ts = {}
+latency_stats = {}
+runtime_lock = threading.Lock()
+TARGET_AI_FPS = float(os.getenv("TARGET_AI_FPS", "15"))
+if TARGET_AI_FPS <= 0:
+    TARGET_AI_FPS = 15.0
+MIN_PROCESS_INTERVAL_SEC = 1.0 / TARGET_AI_FPS
+INFERENCE_WORKERS = max(1, int(os.getenv("INFERENCE_WORKERS", "1")))
+INFERENCE_MODE = os.getenv("INFERENCE_MODE", "thread").strip().lower()
+if INFERENCE_MODE not in ("thread", "process"):
+    INFERENCE_MODE = "thread"
+LATENCY_LOG_INTERVAL_SEC = float(os.getenv("LATENCY_LOG_INTERVAL_SEC", "5"))
+inference_pool = None
 
 def get_client_game():
     """Lấy hoặc tạo trạng thái game riêng cho client hiện tại."""
     sid = request.sid
     if sid not in games:
         games[sid] = GameState()
+    if sid not in game_locks:
+        game_locks[sid] = threading.Lock()
     return games[sid]
 
-def emit_game_update(game, ai_result):
+def ensure_client_runtime(sid):
+    client_runtime.setdefault(sid, {"last_process_ts": 0.0})
+    latency_stats.setdefault(
+        sid,
+        {
+            "samples_ms": deque(maxlen=120),
+            "processed": 0,
+            "dropped_busy": 0,
+            "dropped_fps_limit": 0,
+            "last_log_ts": time.perf_counter(),
+        },
+    )
+
+def maybe_log_latency(sid):
+    stats = latency_stats.get(sid)
+    if not stats:
+        return
+    now = time.perf_counter()
+    if now - stats["last_log_ts"] < LATENCY_LOG_INTERVAL_SEC:
+        return
+    stats["last_log_ts"] = now
+
+    samples = list(stats["samples_ms"])
+    if not samples:
+        print(
+            f"📊 [{sid[:6]}] no samples | processed={stats['processed']} "
+            f"drop_busy={stats['dropped_busy']} drop_fps={stats['dropped_fps_limit']}"
+        )
+        return
+
+    samples.sort()
+    avg_ms = sum(samples) / len(samples)
+    p95_ms = samples[min(len(samples) - 1, int(len(samples) * 0.95))]
+    print(
+        f"📊 [{sid[:6]}] latency avg={avg_ms:.1f}ms p95={p95_ms:.1f}ms "
+        f"samples={len(samples)} processed={stats['processed']} "
+        f"drop_busy={stats['dropped_busy']} drop_fps={stats['dropped_fps_limit']}"
+    )
+
+def emit_game_update(game, ai_result, sid=None):
     """Tính toán và gửi game_update về đúng client."""
     game_state = update_game_state(
         game,
@@ -42,7 +104,57 @@ def emit_game_update(game, ai_result):
         ai_result.get("dodge"),
     )
     game_state["landmarks"] = ai_result.get("landmarks", {})
-    emit('game_update', game_state)
+    if sid:
+        socketio.emit('game_update', game_state, to=sid)
+    else:
+        emit('game_update', game_state)
+
+def run_inference(img_bytes):
+    """Hàm inference chạy trong worker process."""
+    nparr = np.frombuffer(img_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if img is None:
+        return {"skill": None, "block": False, "dodge": None, "landmarks": {}}
+    return process_frame(img)
+
+def get_inference_pool():
+    global inference_pool
+    if inference_pool is None:
+        if INFERENCE_MODE == "process":
+            inference_pool = ProcessPoolExecutor(max_workers=INFERENCE_WORKERS)
+        else:
+            inference_pool = ThreadPoolExecutor(max_workers=INFERENCE_WORKERS)
+    return inference_pool
+
+def handle_inference_done(sid, start_ts, future):
+    """Nhận kết quả ngay khi worker xong, tránh chờ frame kế tiếp mới emit."""
+    try:
+        ai_result = future.result()
+        if ai_result.get("skill"):
+            print(f"🔥 [{sid[:6]}] Phát hiện tư thế: {ai_result['skill'].upper()}")
+
+        game = games.get(sid)
+        lock = game_locks.get(sid)
+        if game is not None and lock is not None:
+            with lock:
+                emit_game_update(game, ai_result, sid=sid)
+
+        elapsed_ms = (time.perf_counter() - start_ts) * 1000.0
+        with runtime_lock:
+            stats = latency_stats.get(sid)
+            if stats:
+                stats["samples_ms"].append(elapsed_ms)
+                stats["processed"] += 1
+    except Exception as e:
+        print(f"⚠️ Lỗi worker inference ({sid}): {str(e)}")
+    finally:
+        with runtime_lock:
+            current = pending_futures.get(sid)
+            if current is future:
+                pending_futures.pop(sid, None)
+                pending_start_ts.pop(sid, None)
+        maybe_log_latency(sid)
+
 
 @socketio.on('connect')
 def handle_connect():
@@ -51,6 +163,8 @@ def handle_connect():
     print(f"✅ Client đã kết nối: {sid}")
     
     games[sid] = GameState()
+    game_locks[sid] = threading.Lock()
+    ensure_client_runtime(sid)
     
     print(f"🎮 Game đã được reset. Sẵn sàng chiến đấu!")
 
@@ -59,6 +173,11 @@ def handle_disconnect():
     """Sự kiện xảy ra khi Client ngắt kết nối."""
     sid = request.sid
     games.pop(sid, None)
+    game_locks.pop(sid, None)
+    client_runtime.pop(sid, None)
+    pending_futures.pop(sid, None)
+    pending_start_ts.pop(sid, None)
+    latency_stats.pop(sid, None)
     print(f"❌ Client ngắt kết nối: {sid}")
 
 @socketio.on('reset_game')
@@ -81,7 +200,27 @@ def handle_video_frame(data):
         print(f"📡 Server đang nhận ảnh từ Webcam (Khung hình thứ {frame_count})...")
 
     try:
-        game = get_client_game()
+        sid = request.sid
+        ensure_client_runtime(sid)
+        if sid not in games:
+            games[sid] = GameState()
+        if sid not in game_locks:
+            game_locks[sid] = threading.Lock()
+
+        pending = pending_futures.get(sid)
+        if pending and not pending.done():
+            latency_stats[sid]["dropped_busy"] += 1
+            maybe_log_latency(sid)
+            return
+
+        now = time.perf_counter()
+        runtime = client_runtime.setdefault(sid, {"last_process_ts": 0.0})
+        if now - runtime["last_process_ts"] < MIN_PROCESS_INTERVAL_SEC:
+            latency_stats[sid]["dropped_fps_limit"] += 1
+            maybe_log_latency(sid)
+            return
+        runtime["last_process_ts"] = now
+
         if not isinstance(data, dict):
             return
 
@@ -92,19 +231,20 @@ def handle_video_frame(data):
             image_data = image_data.split(",")[1]
 
         img_bytes = base64.b64decode(image_data)
-        nparr = np.frombuffer(img_bytes, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-
-        if img is None: return
-
-        # 1. Gọi AI Nhận diện Cử chỉ
-        ai_result = process_frame(img)
-        
-        # In thông báo ra Terminal nếu phát hiện kỹ năng
-        if ai_result["skill"]:
-            print(f"🔥 Phát hiện tư thế: {ai_result['skill'].upper()}")
-
-        emit_game_update(game, ai_result)
+        pool = get_inference_pool()
+        start_ts = time.perf_counter()
+        future = pool.submit(run_inference, img_bytes)
+        with runtime_lock:
+            pending_futures[sid] = future
+            pending_start_ts[sid] = start_ts
+        future.add_done_callback(
+            lambda done_future, client_sid=sid, submitted_at=start_ts: handle_inference_done(
+                client_sid,
+                submitted_at,
+                done_future,
+            )
+        )
+        maybe_log_latency(sid)
 
     except Exception as e:
         print(f"⚠️ Lỗi xử lý frame: {str(e)}")
@@ -126,7 +266,8 @@ def handle_manual_input(data):
             "dodge": data.get("dodge"),
             "landmarks": {}
         }
-        emit_game_update(game, ai_result)
+        with game_locks[request.sid]:
+            emit_game_update(game, ai_result)
     except Exception as e:
         print(f"⚠️ Lỗi manual_input: {str(e)}")
 
@@ -136,4 +277,4 @@ if __name__ == '__main__':
     # - port=5000: Cổng mặc định của Flask
     # - debug=True: Tự động tải lại code khi có thay đổi (chỉ dùng khi phát triển)
     print("🔥 Shinobi Server đang khởi động tại cổng 5000...")
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True, allow_unsafe_werkzeug=True)
+    socketio.run(app, host='0.0.0.0', port=5000, debug=False, allow_unsafe_werkzeug=True)

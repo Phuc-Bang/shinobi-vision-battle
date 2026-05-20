@@ -44,7 +44,32 @@ let isPaused = false;
 let showSkeleton = true;
 let socketRef = null;
 let keyHelpAutoCollapseTimer = null;
+let smoothedLandmarksCache = { pose: [], hands: [] };
+const LANDMARK_EMA_ALPHA = 0.35;
 window.gameConfig = window.gameConfig || { player: "naruto", bot: "mizuki", map: "arena" };
+
+function emaPoint(prev, curr, alpha = LANDMARK_EMA_ALPHA) {
+    if (!prev) return curr;
+    return [
+        prev[0] + alpha * (curr[0] - prev[0]),
+        prev[1] + alpha * (curr[1] - prev[1]),
+    ];
+}
+
+function smoothLandmarks(landmarks) {
+    if (!landmarks) return landmarks;
+    const pose = Array.isArray(landmarks.pose) ? landmarks.pose : [];
+    const hands = Array.isArray(landmarks.hands) ? landmarks.hands : [];
+
+    const smoothedPose = pose.map((pt, i) => emaPoint(smoothedLandmarksCache.pose[i], pt));
+    const smoothedHands = hands.map((hand, handIdx) => {
+        const prevHand = smoothedLandmarksCache.hands[handIdx] || [];
+        return hand.map((pt, pointIdx) => emaPoint(prevHand[pointIdx], pt));
+    });
+
+    smoothedLandmarksCache = { pose: smoothedPose, hands: smoothedHands };
+    return smoothedLandmarksCache;
+}
 
 function setKeyHelpCollapsed(collapsed) {
     if (!keyHelpPanel || !btnToggleKeyHelp) return;
@@ -303,7 +328,7 @@ document.addEventListener("DOMContentLoaded", () => {
     socket.on('game_update', (data) => {
         // 1. Vẽ Skeleton (Chỉ vẽ nếu game đang diễn ra)
         if (data.landmarks && !data.game_over) {
-            drawSkeleton(data.landmarks);
+            drawSkeleton(smoothLandmarks(data.landmarks));
         } else if (data.game_over) {
             if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
             isGameRunning = false;
@@ -334,6 +359,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         lastEventKey = null;
         isGameOverProcessed = false;
+        smoothedLandmarksCache = { pose: [], hands: [] };
     });
 
     if (btnMainMenu) {

@@ -112,6 +112,7 @@ class StateImageSprite {
     const targetHeight = (cfg.height || 260) * scale;
     const yOffset = cfg.yOffset || 0;
     const xOffset = cfg.xOffset || 0;
+    const pivotX = typeof cfg.pivotX === "number" ? cfg.pivotX : 0.5;
     let resolvedFlip = flipHorizontal;
     if (cfg.flip === "invert") {
       resolvedFlip = !flipHorizontal;
@@ -126,7 +127,8 @@ class StateImageSprite {
     if (resolvedFlip) {
       ctx.scale(-1, 1);
     }
-    const drawX = -drawWidth / 2 + (resolvedFlip ? -xOffset : xOffset);
+    const pivotDrawX = -drawWidth * pivotX;
+    const drawX = pivotDrawX + (resolvedFlip ? -xOffset : xOffset);
     ctx.drawImage(
       img,
       bounds.sx,
@@ -190,9 +192,10 @@ class GameEngine {
     };
     this.actionProfile = {
       player: {
-        attack1: { startupMs: 140, recoveryMs: 320, projectile: "rasengan" },
+        attack1: { startupMs: 140, activeMs: 90, recoveryMs: 320, projectile: "rasengan" },
         attack2: {
           startupMs: 220,
+          activeMs: 110,
           recoveryMs: 520,
           projectile: "rasenshuriken",
         },
@@ -201,11 +204,27 @@ class GameEngine {
         dodge_left: { startupMs: 0, recoveryMs: 260 },
       },
       bot: {
-        attack1: { startupMs: 160, recoveryMs: 360, projectile: "kunai" },
+        attack1: { startupMs: 160, activeMs: 85, recoveryMs: 360, projectile: "kunai" },
         dodge_right: { startupMs: 0, recoveryMs: 250 },
       },
     };
     this.actionLockUntil = { player: 0, bot: 0 };
+    this.actionPhase = {
+      player: {
+        state: "idle",
+        action: "",
+        startupUntil: 0,
+        activeUntil: 0,
+        recoveryUntil: 0,
+      },
+      bot: {
+        state: "idle",
+        action: "",
+        startupUntil: 0,
+        activeUntil: 0,
+        recoveryUntil: 0,
+      },
+    };
     this.actionTimers = [];
 
     // Mảng chứa Text sát thương bay lên (Damage Texts)
@@ -383,9 +402,9 @@ class GameEngine {
           dead: "assets/images/sprites/naruto/dead.png",
         },
         renderConfig: {
-          default: { height: 280 },
-          attack1: { height: 286, flip: "invert", xOffset: 12 },
-          attack2: { height: 300, flip: "invert", xOffset: 16 },
+          default: { height: 280, pivotX: 0.5 },
+          attack1: { height: 286, xOffset: 8, pivotX: 0.46 },
+          attack2: { height: 300, xOffset: 10, pivotX: 0.45 },
           buff: { height: 295 },
           dodge_left: { height: 260 },
           dodge_right: { height: 260 },
@@ -405,8 +424,8 @@ class GameEngine {
           dead: "assets/images/sprites/mizuki/dead.png",
         },
         renderConfig: {
-          default: { height: 285 },
-          attack1: { height: 292, flip: "invert", xOffset: 10 },
+          default: { height: 285, pivotX: 0.5 },
+          attack1: { height: 292, xOffset: 7, pivotX: 0.54 },
           dodge_right: { height: 268 },
           dead: { height: 145, yOffset: 12 },
         },
@@ -466,11 +485,14 @@ class GameEngine {
     this.playerChar = new window.Character(playerDef.name, playerSprite, 250, 620, "left", {
       maxHp: 100,
       scale: 1.0,
+      // Sprite hiện tại của project gốc quay sang trái
+      baseFacingRight: false,
       flipSprite: true,
     });
     this.botChar = new window.Character(botDef.name, botSprite, 1280 - 250, 620, "right", {
       maxHp: 100,
       scale: 1.0,
+      baseFacingRight: false,
       flipSprite: false,
     });
 
@@ -820,6 +842,33 @@ class GameEngine {
     };
   }
 
+  getHurtbox(character) {
+    if (!character) return null;
+    const crouchLike = character.state === "dodge_left" || character.state === "dodge_right";
+    const guardLike = character.state === "block";
+    const width = guardLike ? 96 : crouchLike ? 88 : 104;
+    const height = guardLike ? 164 : crouchLike ? 150 : 176;
+    const x = character.x - width / 2;
+    const y = character.y - height - 8;
+    return { x, y, width, height };
+  }
+
+  intersectsRectCircle(rect, cx, cy, radius) {
+    if (!rect) return false;
+    const nearestX = Math.max(rect.x, Math.min(cx, rect.x + rect.width));
+    const nearestY = Math.max(rect.y, Math.min(cy, rect.y + rect.height));
+    const dx = cx - nearestX;
+    const dy = cy - nearestY;
+    return dx * dx + dy * dy <= radius * radius;
+  }
+
+  getHitTypeFromProjectile(type) {
+    if (type === "rasenshuriken") return "heavy";
+    if (type === "rasengan") return "medium";
+    if (type === "kunai") return "light";
+    return "medium";
+  }
+
   spawnHitFlash(targetChar, type = "medium") {
     const profile = this.hitFlashProfile[type] || this.hitFlashProfile.medium;
     this.hitFlashes.push({
@@ -983,6 +1032,7 @@ class GameEngine {
     const x = character.x + profile.xOffset * direction;
     const y = character.y + profile.yOffset;
     const vx = Math.abs(resolvedSpeed) * direction;
+    const owner = character === this.playerChar ? "player" : "bot";
 
     this.projectiles.push(
       new Projectile(
@@ -992,6 +1042,7 @@ class GameEngine {
         type,
         this.projectileImages[type] || null,
         profile.size,
+        owner,
       ),
     );
   }
@@ -1001,6 +1052,27 @@ class GameEngine {
       clearTimeout(timerId);
     }
     this.actionTimers = [];
+  }
+
+  updateActionPhases(now) {
+    for (const actorKey of ["player", "bot"]) {
+      const phase = this.actionPhase[actorKey];
+      if (!phase || phase.recoveryUntil <= 0) continue;
+
+      if (now < phase.startupUntil) {
+        phase.state = "startup";
+      } else if (now < phase.activeUntil) {
+        phase.state = "active";
+      } else if (now < phase.recoveryUntil) {
+        phase.state = "recovery";
+      } else {
+        phase.state = "idle";
+        phase.action = "";
+        phase.startupUntil = 0;
+        phase.activeUntil = 0;
+        phase.recoveryUntil = 0;
+      }
+    }
   }
 
   runTimedAction(actorKey, character, stateName) {
@@ -1018,9 +1090,33 @@ class GameEngine {
     }
 
     const startup = Math.max(0, profile.startupMs || 0);
+    const active = Math.max(0, profile.activeMs || 80);
     const recovery = Math.max(80, profile.recoveryMs || 0);
-    this.actionLockUntil[actorKey] = now + startup + recovery;
+    const startupUntil = now + startup;
+    const activeUntil = startupUntil + active;
+    const recoveryUntil = activeUntil + recovery;
+    this.actionLockUntil[actorKey] = recoveryUntil;
+    this.actionPhase[actorKey] = {
+      state: startup > 0 ? "startup" : "active",
+      action: stateName,
+      startupUntil,
+      activeUntil,
+      recoveryUntil,
+    };
+
+    // Khi bắt đầu đòn tấn công, ép quay mặt về đối thủ ngay lập tức
+    // để tránh 1 frame đầu bị ngược hướng do deadzone.
+    const isOffensive =
+      stateName === "attack1" || stateName === "attack2" || !!profile.projectile;
+    if (isOffensive && typeof character.forceFaceTarget === "function") {
+      const target = actorKey === "player" ? this.botChar : this.playerChar;
+      if (target) character.forceFaceTarget(target.x);
+    }
+
     character.setState(stateName);
+    if (typeof character.lockFacing === "function") {
+      character.lockFacing(startup + active);
+    }
 
     const runActive = () => {
       if (this.isGameOver || character.isDead) return;
@@ -1103,6 +1199,20 @@ class GameEngine {
     this.comboState.bot.timer = 0;
     this.actionLockUntil.player = 0;
     this.actionLockUntil.bot = 0;
+    this.actionPhase.player = {
+      state: "idle",
+      action: "",
+      startupUntil: 0,
+      activeUntil: 0,
+      recoveryUntil: 0,
+    };
+    this.actionPhase.bot = {
+      state: "idle",
+      action: "",
+      startupUntil: 0,
+      activeUntil: 0,
+      recoveryUntil: 0,
+    };
 
     if (this.logContainer) this.logContainer.innerHTML = ""; // Xóa sạch bảng Log
     if (this.playerChar) this.playerChar.reset();
@@ -1137,11 +1247,34 @@ class GameEngine {
 
     if (this.playerChar) this.playerChar.update(simDelta);
     if (this.botChar) this.botChar.update(simDelta);
+    this.updateActionPhases(performance.now());
+    if (this.playerChar && this.botChar) {
+      this.playerChar.faceTargetX = this.botChar.x;
+      this.botChar.faceTargetX = this.playerChar.x;
+    }
 
     // Cập nhật đạn bay
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       let p = this.projectiles[i];
-        p.update(simDelta);
+      p.update(simDelta);
+
+      if (p.active && !p.hasHit) {
+        const targetChar = p.owner === "player" ? this.botChar : this.playerChar;
+        const attackerChar = p.owner === "player" ? this.playerChar : this.botChar;
+        const hurtbox = this.getHurtbox(targetChar);
+        const projectileRadius = Math.max(16, p.size * 0.22);
+
+        if (
+          targetChar &&
+          !targetChar.isDead &&
+          this.intersectsRectCircle(hurtbox, p.x, p.y, projectileRadius)
+        ) {
+          const hitType = this.getHitTypeFromProjectile(p.type);
+          p.hasHit = true;
+          p.active = false;
+          this.emitHitEffect(targetChar, attackerChar, hitType);
+        }
+      }
 
       // Xóa nếu đạn bay ra khỏi màn hình
       if (!p.active) {
@@ -1312,7 +1445,7 @@ class GameEngine {
     if (this.debugEnabled) {
       ctx.globalAlpha = 0.92;
       ctx.fillStyle = "rgba(8, 12, 20, 0.8)";
-      ctx.fillRect(16, 16, 250, 132);
+      ctx.fillRect(16, 16, 330, 172);
       ctx.globalAlpha = 1;
       ctx.fillStyle = "#9be7ff";
       ctx.font = "bold 14px Consolas, monospace";
@@ -1326,6 +1459,16 @@ class GameEngine {
         `Shake: ${this.shakeTimer.toFixed(2)} / ${this.shakeDuration.toFixed(2)}`,
         28,
         140,
+      );
+      ctx.fillText(
+        `P Phase: ${this.actionPhase.player.state} (${this.actionPhase.player.action || "-"})`,
+        28,
+        160,
+      );
+      ctx.fillText(
+        `B Phase: ${this.actionPhase.bot.state} (${this.actionPhase.bot.action || "-"})`,
+        28,
+        178,
       );
     }
 
@@ -1371,7 +1514,7 @@ window.gameEngine = {
 // CLASS ĐẠN BAY (PROJECTILE)
 // ==========================================
 class Projectile {
-  constructor(x, y, speed, type, image = null, size = 84) {
+  constructor(x, y, speed, type, image = null, size = 84, owner = "player") {
     this.x = x;
     this.y = y;
     this.speed = speed;
@@ -1379,6 +1522,8 @@ class Projectile {
     this.image = image;
     this.active = true;
     this.size = size;
+    this.owner = owner;
+    this.hasHit = false;
   }
 
   update(dt) {

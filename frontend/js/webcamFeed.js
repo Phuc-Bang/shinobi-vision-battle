@@ -12,6 +12,7 @@ class WebcamFeed {
         this.sendInterval = null;
         this.fallbackInterval = null;
         this.fps = 12; // Định kỳ 10-15 fps (ở đây chọn 12)
+        this.captureBusy = false;
         
         // Các phần tử DOM sẽ được gán trong quá trình khởi tạo
         this.video = null;
@@ -41,7 +42,12 @@ class WebcamFeed {
         try {
             // Yêu cầu quyền truy cập Camera
             this.mediaStream = await navigator.mediaDevices.getUserMedia({ 
-                video: { width: 640, height: 480 },
+                video: {
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    frameRate: { ideal: 15, max: 20 },
+                    facingMode: "user"
+                },
                 audio: false 
             });
             this.video.srcObject = this.mediaStream;
@@ -103,15 +109,31 @@ class WebcamFeed {
             if (!this.socket || !this.socket.connected) return;
             // 2. Trò chơi đã kết thúc (Game Over)
             if (this.isGameOverChecker && this.isGameOverChecker() === true) return;
+            // 3. Lần encode trước chưa xong thì bỏ frame hiện tại để tránh lag tích lũy.
+            if (this.captureBusy) return;
 
             // Chụp Frame hiện tại của Video vẽ lên thẻ Canvas ẩn
             captureCtx.drawImage(this.video, 0, 0, captureCanvas.width, captureCanvas.height);
-            
-            // Xuất ra chuỗi Base64 (Định dạng JPEG, Chất lượng nén 0.6 để tăng tốc độ truyền tải)
-            const base64String = captureCanvas.toDataURL('image/jpeg', 0.6);
-            
-            // Bắn sự kiện lên Backend Python
-            this.socket.emit('video_frame', { image: base64String });
+
+            this.captureBusy = true;
+            captureCanvas.toBlob((blob) => {
+                if (!blob) {
+                    this.captureBusy = false;
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    if (this.socket && this.socket.connected) {
+                        this.socket.emit('video_frame', { image: reader.result });
+                    }
+                    this.captureBusy = false;
+                };
+                reader.onerror = () => {
+                    this.captureBusy = false;
+                };
+                reader.readAsDataURL(blob);
+            }, 'image/jpeg', 0.6);
             
         }, intervalMs);
     }
