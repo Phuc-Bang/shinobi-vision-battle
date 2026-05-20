@@ -3,17 +3,29 @@
  * Xử lý: Webcam, SocketIO, Audio, Vẽ Khung Xương (Skeleton), và Giao Diện (UI).
  */
 
-// Bỏ ép buộc transport để trình duyệt tự do chọn cách kết nối (Fix lỗi đứt kết nối ngầm)
-const socket = io('http://localhost:5000');
+// Không tự khởi tạo Socket ở đây nữa, sẽ dùng chung socket từ gameEngine.js
 
 // ===== KHAI BÁO BIẾN GIAO DIỆN =====
-const video = document.getElementById('webcam');
 const canvas = document.getElementById('skeleton-overlay');
-const ctx = canvas.getContext('2d');
+const ctx = canvas ? canvas.getContext('2d') : null;
 const logContainer = document.getElementById('log');
 const btnStory = document.getElementById('btn-toggle-story');
 const storyContent = document.getElementById('story-content');
 const btnReset = document.getElementById('btn-reset');
+const btnMainMenu = document.getElementById('btn-main-menu');
+const mainMenu = document.getElementById('main-menu');
+const btnStartGame = document.getElementById('btn-start-game');
+const btnOpenHowto = document.getElementById('btn-open-howto');
+const howtoModal = document.getElementById('howto-modal');
+const btnCloseHowto = document.getElementById('btn-close-howto');
+const playerSelect = document.getElementById('player-select');
+const botSelect = document.getElementById('bot-select');
+const mapSelect = document.getElementById('map-select');
+const pauseOverlay = document.getElementById('pause-overlay');
+const btnResumeGame = document.getElementById('btn-resume-game');
+const btnPauseMenu = document.getElementById('btn-pause-menu');
+const keyHelpPanel = document.querySelector('.keyboard-help-panel');
+const btnToggleKeyHelp = document.getElementById('btn-toggle-keyhelp');
 
 // ===== KHAI BÁO BIẾN ÂM THANH =====
 // (Hiện tại có thể src trống, khi nào bạn có file mp3 thì điền src vào HTML)
@@ -26,12 +38,110 @@ const sfxWin = document.getElementById('sfx-win');
 const sfxLose = document.getElementById('sfx-lose');
 
 // ===== CẤU HÌNH GAME =====
-const SEND_FPS = 12; // 12 khung hình/giây
-const SEND_INTERVAL = 1000 / SEND_FPS;
-let frameInterval = null; // Biến lưu trữ vòng lặp gửi ảnh
 let isGameRunning = false; // Trạng thái game
-let lastMessage = ""; // Lưu tin nhắn cuối để tránh spam
-let isGameOverLogged = false; // Ngăn chặn spam log khi kết thúc
+let lastEventKey = null; // Lưu id sự kiện cuối để tránh xử lý trùng packet
+let isPaused = false;
+let showSkeleton = true;
+let socketRef = null;
+let keyHelpAutoCollapseTimer = null;
+window.gameConfig = window.gameConfig || { player: "naruto", bot: "mizuki", map: "arena" };
+
+function setKeyHelpCollapsed(collapsed) {
+    if (!keyHelpPanel || !btnToggleKeyHelp) return;
+    keyHelpPanel.classList.toggle('collapsed', !!collapsed);
+    btnToggleKeyHelp.setAttribute('aria-expanded', String(!collapsed));
+    btnToggleKeyHelp.textContent = collapsed ? "Mở rộng" : "Thu gọn";
+}
+
+function scheduleKeyHelpAutoCollapse() {
+    if (!keyHelpPanel || !btnToggleKeyHelp) return;
+    if (keyHelpAutoCollapseTimer) clearTimeout(keyHelpAutoCollapseTimer);
+    keyHelpAutoCollapseTimer = setTimeout(() => {
+        setKeyHelpCollapsed(true);
+    }, 7000);
+}
+
+function readConfigFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const player = params.get("player");
+    const bot = params.get("bot");
+    const map = params.get("map");
+    if (player === "naruto" || player === "mizuki") {
+        window.gameConfig.player = player;
+    }
+    if (bot === "naruto" || bot === "mizuki") {
+        window.gameConfig.bot = bot;
+    }
+    if (map) {
+        window.gameConfig.map = map;
+    }
+}
+
+function setMenuVisible(isVisible) {
+    if (!mainMenu) return;
+    mainMenu.classList.toggle('hidden', !isVisible);
+}
+
+function setPauseVisible(isVisible) {
+    if (!pauseOverlay) return;
+    pauseOverlay.classList.toggle('hidden', !isVisible);
+}
+
+function setPaused(paused) {
+    isPaused = !!paused;
+    if (window.game2dControl) window.game2dControl.setPaused(isPaused);
+    setPauseVisible(isPaused);
+}
+
+function syncSelectDefaults() {
+    if (playerSelect) playerSelect.value = window.gameConfig.player || "naruto";
+    if (botSelect) botSelect.value = window.gameConfig.bot || "mizuki";
+    if (mapSelect) mapSelect.value = window.gameConfig.map || "arena";
+}
+
+function getMenuConfig() {
+    const playerSource = playerSelect?.value || window.gameConfig.player || "naruto";
+    const botSource = botSelect?.value || window.gameConfig.bot || "mizuki";
+    const mapSource = mapSelect?.value || window.gameConfig.map || "arena";
+    const player = playerSource === "mizuki" ? "mizuki" : "naruto";
+    let bot = botSource === "naruto" ? "naruto" : "mizuki";
+    if (bot === player) {
+        bot = player === "naruto" ? "mizuki" : "naruto";
+    }
+    const map = mapSource;
+    return { player, bot, map };
+}
+
+async function startMatch() {
+    const config = getMenuConfig();
+    window.gameConfig = config;
+    if (window.game2dControl) {
+        window.game2dControl.setMap(config.map);
+        window.game2dControl.setPaused(false);
+    }
+    isGameRunning = true;
+    isPaused = false;
+    setMenuVisible(false);
+    if (window.gameEngine) {
+        await window.gameEngine.applyConfig(config);
+    }
+    bgm.currentTime = 0;
+    bgm.play().catch(() => {});
+}
+
+function backToMenu() {
+    isGameRunning = false;
+    setPaused(false);
+    if (!mainMenu) {
+        window.location.href = "index.html";
+        return;
+    }
+    setMenuVisible(true);
+    if (window.gameEngine && window.gameEngine.instance) {
+        window.gameEngine.instance.isGameOver = true;
+    }
+    bgm.pause();
+}
 
 // Tự động phát nhạc nền khi người dùng tương tác với màn hình lần đầu
 document.body.addEventListener('click', () => {
@@ -41,65 +151,7 @@ document.body.addEventListener('click', () => {
 }, { once: true });
 
 
-/**
- * Khởi tạo Webcam và yêu cầu quyền truy cập
- */
-async function setupWebcam() {
-    addLog("🔍 Đang khởi tạo camera...", "system");
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: { width: 640, height: 480 },
-            audio: false
-        });
-        video.srcObject = stream;
-        
-        // Đợi video thực sự phát
-        await video.play();
-        
-        // Cập nhật kích thước canvas khớp với video
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        addLog("🎥 Camera đã sẵn sàng. Trận chiến bắt đầu!", "system");
-        
-        isGameRunning = true;
-        startSendingFrames(); // Bắt đầu gửi ảnh lên Server
-    } catch (err) {
-        addLog("❌ Lỗi Camera: " + err.name + ". Vui lòng cấp quyền!", "system");
-    }
-}
-
-/**
- * Gửi frame ảnh lên Server liên tục
- */
-function startSendingFrames() {
-    if (frameInterval) clearInterval(frameInterval);
-
-    const captureCanvas = document.createElement('canvas');
-    captureCanvas.width = 640;
-    captureCanvas.height = 480;
-    const captureCtx = captureCanvas.getContext('2d');
-
-    frameInterval = setInterval(() => {
-        // Chỉ gửi nếu Socket đang kết nối VÀ Game đang diễn ra
-        if (socket.connected && isGameRunning) {
-            captureCtx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
-            // Giảm chất lượng ảnh xuống 0.5 để truyền tải siêu tốc
-            const imageData = captureCanvas.toDataURL('image/jpeg', 0.5);
-            socket.emit('video_frame', { image: imageData });
-        }
-    }, SEND_INTERVAL);
-}
-
-/**
- * Dừng gửi frame (Khi kết thúc game)
- */
-function stopSendingFrames() {
-    isGameRunning = false;
-    if (frameInterval) {
-        clearInterval(frameInterval);
-        frameInterval = null;
-    }
-}
+// Đã loại bỏ các hàm setupWebcam, startSendingFrames, stopSendingFrames cũ vì đã chuyển sang webcamFeed.js
 
 // Khai báo các đường nối cơ thể của MediaPipe Pose
 const POSE_CONNECTIONS = [
@@ -117,47 +169,15 @@ const HAND_CONNECTIONS = [
     [15, 16], [13, 17], [0, 17], [17, 18], [18, 19], [19, 20]
 ];
 
-let previousPlayerHp = 100;
-let previousBotHp = 100;
-
-/**
- * Kích hoạt hiệu ứng Rung lắc & Chớp sáng khi bị sát thương
- */
-function triggerDamageEffect(target) {
-    if (target === 'player') {
-        const videoBox = document.querySelector('.video-container');
-        if (videoBox) {
-            videoBox.classList.add('shake-effect', 'damage-flash');
-            setTimeout(() => {
-                videoBox.classList.remove('shake-effect', 'damage-flash');
-            }, 300); // Gỡ hiệu ứng sau 0.3 giây
-        }
-    }
-}
-
-/**
- * Ghi log ra giao diện kèm Đổ Màu (Color-coded)
- */
-function addLog(message, type = "") {
-    // Tô màu từ khóa tự động bằng Regex
-    let formattedMsg = message
-        .replace(/(Rasengan|Rasenshuriken|Kage Bunshin|Phân thân)/gi, '<span style="color: var(--primary-orange); font-weight: bold; text-shadow: 0 0 5px var(--primary-orange);">$1</span>')
-        .replace(/(\d+ sát thương|mất \d+ máu|mất \d+ HP)/gi, '<span style="color: var(--hp-enemy); font-weight: bold; text-shadow: 0 0 5px var(--hp-enemy);">$1</span>')
-        .replace(/(Thay Thế|né được|chặn thành công|hồi máu)/gi, '<span style="color: var(--hp-player); font-weight: bold; text-shadow: 0 0 5px var(--hp-player);">$1</span>');
-
-    const p = document.createElement('p');
-    p.className = "log-entry " + type;
-    p.innerHTML = `[${new Date().toLocaleTimeString()}] ${formattedMsg}`;
-    logContainer.appendChild(p);
-    // Tự động cuộn xuống cuối
-    logContainer.scrollTop = logContainer.scrollHeight;
-}
+// Hàm addLog đã được chuyển sang gameEngine.js
 
 /**
  * Vẽ khung xương (Pose & Hands) lên màn hình cực mượt kèm ÁNH SÁNG NEON
  */
 function drawSkeleton(landmarks) {
+    if (!ctx || !canvas) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!showSkeleton) return;
     if (!landmarks) return;
 
     // Bật hiệu ứng Phát Sáng (Neon Glow)
@@ -216,18 +236,7 @@ function drawSkeleton(landmarks) {
     ctx.shadowBlur = 0;
 }
 
-/**
- * Cập nhật giao diện Cooldown của Kỹ năng
- */
-function updateCooldownUI(elementId, timeRemaining) {
-    const el = document.getElementById(elementId);
-    if (timeRemaining > 0) {
-        el.innerText = timeRemaining.toFixed(1);
-        el.classList.remove('hidden');
-    } else {
-        el.classList.add('hidden');
-    }
-}
+// updateCooldownUI đã chuyển sang gameEngine.js
 
 /**
  * Xử lý phát âm thanh tự động dựa vào Text
@@ -248,122 +257,198 @@ function playSoundEffects(message) {
 }
 
 
-// ===== LẮNG NGHE SỰ KIỆN TỪ WEBSOCKET =====
+// ===== LẮNG NGHE SỰ KIỆN TỪ WEBSOCKET (Đồng bộ với gameEngine) =====
 
-socket.on('connect', () => {
-    addLog("✅ Đã kết nối với máy chủ AI. Sẵn sàng chiến đấu!", "system");
-    socket.emit('client_ready', { status: 'ready' });
-});
+document.addEventListener("DOMContentLoaded", () => {
+    readConfigFromUrl();
+    // Socket được khởi tạo đồng bộ trong initGameEngine() (dòng đầu tiên),
+    // game2d.js load trước script.js nên socket đã sẵn sàng tại đây.
+    const socket = window.gameEngine.instance.socket;
+    socketRef = socket;
 
-socket.on('disconnect', () => {
-    addLog("❌ Mất kết nối tới Server. Đang thử kết nối lại...", "system");
-    stopSendingFrames();
-});
-
-socket.on('game_update', (data) => {
-    // 1. Vẽ Skeleton (Chỉ vẽ nếu game đang diễn ra)
-    if (data.landmarks && !data.game_over) {
-        drawSkeleton(data.landmarks);
-    } else if (data.game_over) {
-        // Nếu game kết thúc, xóa sạch khung xương còn sót lại trên màn hình
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!socket) {
+        console.error("Lỗi: Không tìm thấy Socket từ GameEngine!");
+        return;
     }
 
-    // 2. Cập nhật Máu & Kiểm tra Sát Thương
-    if (data.player_hp !== undefined && data.bot_hp !== undefined) {
-        const pFill = document.getElementById('player-hp-fill');
-        const bFill = document.getElementById('enemy-hp-fill');
-        
-        // KIỂM TRA MẤT MÁU ĐỂ RUNG MÀN HÌNH
-        if (data.player_hp < previousPlayerHp) {
-            triggerDamageEffect('player');
+    socket.on('connect', () => {
+        if (!window.gameEngine.instance.isGameOver && !isPaused) {
+            isGameRunning = true;
         }
-        previousPlayerHp = data.player_hp;
-        previousBotHp = data.bot_hp;
-        
-        pFill.style.width = `${data.player_hp}%`;
-        document.getElementById('player-hp-text').innerText = `${data.player_hp}/100`;
-        
-        bFill.style.width = `${data.bot_hp}%`;
-        document.getElementById('enemy-hp-text').innerText = `${data.bot_hp}/100`;
+        window.gameEngine.instance.addLog("✅ Backend connected.", "system");
+    });
 
-        pFill.style.backgroundColor = data.player_hp <= 30 ? "darkred" : "var(--hp-player)";
-    }
+    socket.on('disconnect', () => {
+        isGameRunning = false;
+        window.gameEngine.instance.addLog("❌ Backend disconnected. Đang chờ reconnect...", "system");
+    });
 
-    // 3. Cập nhật Cooldown & Số lượng skill
-    if (data.cooldown) {
-        updateCooldownUI('cooldown-rasengan', data.cooldown.rasengan);
-        updateCooldownUI('cooldown-shuriken', data.cooldown.rasenshuriken);
-        updateCooldownUI('cooldown-kage', data.cooldown.kage_bunshin);
-    }
-    if (data.rasenshuriken_remaining !== undefined) {
-        document.getElementById('shuriken-count').innerText = `${data.rasenshuriken_remaining}/3`;
-    }
-
-    // 4. Ghi Log và Phát Âm Thanh
-    if (data.last_message && data.last_message !== lastMessage) {
-        addLog(data.last_message, "skill-cast");
-        playSoundEffects(data.last_message);
-        lastMessage = data.last_message;
-    }
-
-    // 5. Cốt Truyện
-    if (data.story_message) {
-        storyContent.innerText = data.story_message;
-        if (storyContent.classList.contains('hidden')) {
-            storyContent.classList.remove('hidden');
-            btnStory.innerText = "📖 Đóng Cốt Truyện";
+    socket.io.on('reconnect', () => {
+        if (!window.gameEngine.instance.isGameOver && !isPaused) {
+            isGameRunning = true;
         }
-    }
+        window.gameEngine.instance.addLog("🔁 Backend reconnected.", "system");
+    });
 
-    // 6. Xử lý Kết thúc Game
-    if (data.game_over) {
-        if (!isGameOverLogged) {
-            stopSendingFrames(); // Ngừng gửi ảnh
-            bgm.pause(); // Tắt nhạc nền
-            
+    socket.io.on('reconnect_attempt', () => {
+        window.gameEngine.instance.addLog("⏳ Đang reconnect backend...", "system");
+    });
+
+    socket.io.on('connect_error', () => {
+        window.gameEngine.instance.addLog("⚠️ Không thể kết nối backend tại localhost:5000.", "system");
+    });
+
+    let isGameOverProcessed = false;
+
+    socket.on('game_update', (data) => {
+        // 1. Vẽ Skeleton (Chỉ vẽ nếu game đang diễn ra)
+        if (data.landmarks && !data.game_over) {
+            drawSkeleton(data.landmarks);
+        } else if (data.game_over) {
+            if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+            isGameRunning = false;
+        }
+
+        // 2. Phát Âm Thanh dựa trên log
+        const eventKey = data.event_id ?? data.last_message;
+        if (data.last_message && eventKey !== lastEventKey) {
+            playSoundEffects(data.last_message);
+            lastEventKey = eventKey;
+        }
+
+        // 3. Xử lý âm thanh Kết thúc Game
+        if (data.game_over && !isGameOverProcessed) {
+            isGameOverProcessed = true;
+            bgm.pause();
             if (data.winner === 'player') {
-                addLog("🏆 CHIẾN THẮNG! Bạn đã đánh bại Mizuki!", "system");
                 sfxWin.play().catch(()=>{});
             } else {
-                addLog("💀 THẤT BẠI! Naruto đã gục ngã...", "system");
                 sfxLose.play().catch(()=>{});
             }
-            isGameOverLogged = true;
         }
-    } else {
-        isGameOverLogged = false;
+    });
+
+    // XỬ LÝ SỰ KIỆN NÚT BẤM (Cần Socket)
+    btnReset.addEventListener('click', async () => {
+        await startMatch();
+
+        lastEventKey = null;
+        isGameOverProcessed = false;
+    });
+
+    if (btnMainMenu) {
+        btnMainMenu.addEventListener('click', () => {
+            backToMenu();
+            isGameOverProcessed = false;
+            lastEventKey = null;
+        });
+    }
+
+    // Khởi chạy Webcam thông qua Module webcamFeed.js
+    const hasMenuPage = !!mainMenu;
+    isGameRunning = false;
+    syncSelectDefaults();
+    setMenuVisible(hasMenuPage);
+    setPauseVisible(false);
+    if (window.webcamFeed) {
+        window.webcamFeed.initWebcam(socket, () => {
+            return !isGameRunning || isPaused; // true = dừng gửi frame khi menu/pause
+        });
+    }
+
+    if (keyHelpPanel && btnToggleKeyHelp) {
+        btnToggleKeyHelp.addEventListener("click", () => {
+            const isCollapsed = keyHelpPanel.classList.contains("collapsed");
+            setKeyHelpCollapsed(!isCollapsed);
+            if (!isCollapsed) {
+                if (keyHelpAutoCollapseTimer) clearTimeout(keyHelpAutoCollapseTimer);
+            } else {
+                scheduleKeyHelpAutoCollapse();
+            }
+        });
+        keyHelpPanel.addEventListener("mouseenter", () => {
+            setKeyHelpCollapsed(false);
+            if (keyHelpAutoCollapseTimer) clearTimeout(keyHelpAutoCollapseTimer);
+        });
+        keyHelpPanel.addEventListener("mouseleave", () => {
+            scheduleKeyHelpAutoCollapse();
+        });
+        scheduleKeyHelpAutoCollapse();
+    }
+
+    if (!hasMenuPage) {
+        startMatch();
     }
 });
 
-
-// ===== XỬ LÝ SỰ KIỆN NÚT BẤM =====
-
-// Ẩn/Hiện cốt truyện
+// Ẩn/Hiện cốt truyện (Không cần socket)
 btnStory.addEventListener('click', () => {
     storyContent.classList.toggle('hidden');
     btnStory.innerText = storyContent.classList.contains('hidden') ? "📜 Xem Cốt Truyện" : "📖 Đóng Cốt Truyện";
 });
 
-// Chơi lại (Reset Game)
-btnReset.addEventListener('click', () => {
-    addLog("🔄 Đang thiết lập lại trận đấu...", "system");
-    socket.emit('reset_game');
-    
-    // Khởi động lại trạng thái trên giao diện
-    lastMessage = "";
-    isGameOverLogged = false;
-    logContainer.innerHTML = ""; // Xóa log cũ
-    addLog("Trận chiến bắt đầu! Hãy kết ấn...", "system");
-    
-    // Bật lại camera
-    isGameRunning = true;
-    startSendingFrames();
-    
-    // Bật nhạc
-    bgm.currentTime = 0;
-    bgm.play().catch(()=>{});
-});
+if (btnStartGame) {
+    btnStartGame.addEventListener('click', async () => {
+        await startMatch();
+    });
+}
+if (playerSelect && botSelect) {
+    playerSelect.addEventListener("change", () => {
+        if (playerSelect.value === botSelect.value) {
+            botSelect.value = playerSelect.value === "naruto" ? "mizuki" : "naruto";
+        }
+    });
+    botSelect.addEventListener("change", () => {
+        if (botSelect.value === playerSelect.value) {
+            playerSelect.value = botSelect.value === "naruto" ? "mizuki" : "naruto";
+        }
+    });
+}
+if (btnOpenHowto && howtoModal) {
+    btnOpenHowto.addEventListener('click', () => howtoModal.classList.remove('hidden'));
+}
+if (btnCloseHowto && howtoModal) {
+    btnCloseHowto.addEventListener('click', () => howtoModal.classList.add('hidden'));
+}
 
-// Khởi chạy
-setupWebcam();
+if (btnResumeGame) {
+    btnResumeGame.addEventListener('click', () => setPaused(false));
+}
+if (btnPauseMenu) {
+    btnPauseMenu.addEventListener('click', () => backToMenu());
+}
+
+document.addEventListener("keydown", (e) => {
+    const key = e.key.toLowerCase();
+
+    if (key === "escape") {
+        if (!isGameRunning || mainMenu?.classList.contains("hidden") === false) return;
+        setPaused(!isPaused);
+        return;
+    }
+
+    if (key === "h") {
+        showSkeleton = !showSkeleton;
+        if (!showSkeleton && ctx && canvas) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+        if (window.gameEngine?.instance) {
+            window.gameEngine.instance.addLog(
+                `🦴 Skeleton: ${showSkeleton ? "ON" : "OFF"}`,
+                "system"
+            );
+        }
+        return;
+    }
+
+    const inBattle = mainMenu ? mainMenu.classList.contains("hidden") : true;
+    if (!inBattle || !socketRef || !socketRef.connected) return;
+
+    if (key === "1") socketRef.emit("manual_input", { skill: "kage_bunshin" });
+    else if (key === "2") socketRef.emit("manual_input", { skill: "rasengan" });
+    else if (key === "3") socketRef.emit("manual_input", { skill: "rasenshuriken" });
+    else if (key === "b") socketRef.emit("manual_input", { block: true });
+    else if (key === "a") socketRef.emit("manual_input", { dodge: "left" });
+    else if (key === "d") socketRef.emit("manual_input", { dodge: "right" });
+    else if (key === "r") window.gameEngine.resetGame();
+});

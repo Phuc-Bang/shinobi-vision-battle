@@ -10,15 +10,6 @@ import random
 class GameState:
     def __init__(self):
         self.reset_game()
-        
-        # Danh sách cốt truyện sẽ được kích hoạt theo lượng máu của Boss
-        self.story_messages = [
-            {"threshold": 100, "msg": "Mizuki: Ngươi nghĩ vài trò vặt đó có thể đánh bại ta sao, Naruto?", "triggered": False},
-            {"threshold": 50, "msg": "Mizuki: Tên nhóc này... sức mạnh của hắn từ đâu ra vậy?!", "triggered": False},
-            {"threshold": 30, "msg": "Naruto: Ta sẽ không bỏ cuộc! Đó là nhẫn đạo của ta!", "triggered": False},
-            {"threshold": 10, "msg": "Mizuki: Không thể nào! Cuộn giấy phong ấn... sức mạnh của Cửu Vĩ...", "triggered": False},
-            {"threshold": 0, "msg": "Naruto: Kết thúc rồi, Mizuki!", "triggered": False}
-        ]
 
     def reset_game(self):
         """Khởi tạo lại toàn bộ thông số trận đấu."""
@@ -26,7 +17,7 @@ class GameState:
         self.bot_hp = 100
         self.player_buff_end_time = None
         self.player_damage_multiplier = 1.0
-        
+
         # Thời điểm dùng skill lần cuối (0 nghĩa là chưa dùng)
         self.last_skill_time = {
             "rasengan": 0.0,
@@ -34,13 +25,23 @@ class GameState:
             "kage_bunshin": 0.0
         }
         self.rasenshuriken_used_count = 0
-        
+        self.event_seq = 0
+
         # Cấu hình AI của Boss (Mizuki)
         self.next_bot_attack_time = time.time() + 3.0 # Tấn công sau 3 giây
         self.bot_last_action = ""
-        
+
         self.game_over = False
         self.winner = None
+
+        # Reset cốt truyện mỗi ván để triggered flags được xóa
+        self.story_messages = [
+            {"threshold": 100, "msg": "Mizuki: Ngươi nghĩ vài trò vặt đó có thể đánh bại ta sao, Naruto?", "triggered": False},
+            {"threshold": 50, "msg": "Mizuki: Tên nhóc này... sức mạnh của hắn từ đâu ra vậy?!", "triggered": False},
+            {"threshold": 30, "msg": "Naruto: Ta sẽ không bỏ cuộc! Đó là nhẫn đạo của ta!", "triggered": False},
+            {"threshold": 10, "msg": "Mizuki: Không thể nào! Cuộn giấy phong ấn... sức mạnh của Cửu Vĩ...", "triggered": False},
+            {"threshold": 0, "msg": "Naruto: Kết thúc rồi, Mizuki!", "triggered": False}
+        ]
 
     def apply_player_skill(self, skill_name, is_blocking, dodge_dir):
         """Xử lý sát thương và hiệu ứng khi người chơi tung chiêu."""
@@ -110,11 +111,15 @@ class GameState:
         
         # Kiểm tra người chơi có đang phòng thủ hoặc né không
         if is_blocking:
-            result["message"] = "🛡️ Bạn đã chặn thành công Kunai của Mizuki!"
+            # Block giảm 70% sát thương, vẫn nhận 30%
+            reduced = max(1, int(bot_damage * 0.3))
+            self.player_hp = max(0, self.player_hp - reduced)
+            result["damage_dealt"] = reduced
+            result["message"] = f"🛡️ Đỡ được Kunai! Nhận {reduced} sát thương (giảm 70%)."
         elif dodge_dir:
-            result["message"] = f"🏃 Bạn nghiêng người né thành công Kunai!"
+            result["message"] = f"🏃 Né thành công Kunai của Mizuki!"
         else:
-            # Dính đòn
+            # Dính đòn toàn bộ
             self.player_hp = max(0, self.player_hp - bot_damage)
             result["damage_dealt"] = bot_damage
             result["message"] = f"🔪 Dính Kunai! Bạn mất {bot_damage} máu!"
@@ -167,8 +172,13 @@ def update_game_state(game, player_skill, is_blocking, dodge_dir):
     # 5. Cập nhật cốt truyện
     story_msg = game.get_story_message()
     
-    # Chọn thông điệp quan trọng nhất để hiển thị ở Log
-    last_message = skill_res.get("message") or bot_res.get("message") or ""
+    # Gộp cả hai thông điệp nếu cùng xảy ra trong một frame
+    msgs = [m for m in [skill_res.get("message"), bot_res.get("message")] if m]
+    last_message = " | ".join(msgs)
+    event_id = None
+    if last_message:
+        game.event_seq += 1
+        event_id = game.event_seq
 
     # Trả về bộ trạng thái hoàn chỉnh cho Frontend
     return {
@@ -183,6 +193,7 @@ def update_game_state(game, player_skill, is_blocking, dodge_dir):
         "rasenshuriken_remaining": 3 - game.rasenshuriken_used_count,
         "game_over": game.game_over,
         "winner": game.winner,
+        "event_id": event_id,
         "last_message": last_message,
         "story_message": story_msg
     }

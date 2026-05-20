@@ -28,6 +28,159 @@ body {
     overflow: hidden;
 }
 
+.menu-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.menu-backdrop {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 50% 30%, rgba(255, 153, 0, 0.18), rgba(0, 0, 0, 0.78) 60%);
+    backdrop-filter: blur(3px);
+}
+
+.menu-panel {
+    position: relative;
+    z-index: 2;
+    width: min(760px, 92vw);
+    padding: 34px 30px;
+    border-radius: 12px;
+    border: 2px solid var(--primary-orange);
+    background: rgba(15, 17, 23, 0.92);
+    text-align: center;
+    box-shadow: 0 22px 50px rgba(0, 0, 0, 0.5);
+}
+
+.menu-title {
+    font-family: 'Press Start 2P', cursive;
+    font-size: 1.4rem;
+    color: var(--primary-orange);
+    margin-bottom: 14px;
+}
+
+.menu-subtitle {
+    opacity: 0.9;
+    margin-bottom: 22px;
+}
+
+.menu-actions {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.menu-selects {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.menu-select {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    text-align: left;
+    font-size: 0.82rem;
+    color: rgba(240, 240, 240, 0.92);
+}
+
+.menu-select select {
+    height: 40px;
+    border-radius: 7px;
+    border: 1px solid rgba(255, 153, 0, 0.45);
+    background: rgba(20, 24, 32, 0.95);
+    color: #f7f7f7;
+    padding: 0 10px;
+    font-weight: 600;
+}
+
+.menu-btn {
+    min-width: 230px;
+    height: 52px;
+    border: 2px solid #ffb648;
+    border-radius: 8px;
+    background: rgba(35, 39, 48, 0.95);
+    color: #f7f7f7;
+    font-weight: 700;
+    font-size: 0.95rem;
+    cursor: pointer;
+}
+
+.menu-btn.primary {
+    color: #161616;
+    background: linear-gradient(180deg, #ffb21f 0%, #ff9300 100%);
+}
+
+.menu-footnote {
+    font-size: 0.9rem;
+    color: rgba(240, 240, 240, 0.82);
+}
+
+.howto-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.62);
+}
+
+.pause-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.52);
+}
+
+.pause-card {
+    width: min(480px, 92vw);
+    text-align: center;
+    padding: 24px;
+    border-radius: 10px;
+    border: 2px solid var(--primary-orange);
+    background: rgba(15, 18, 26, 0.95);
+}
+
+.pause-card h2 {
+    color: var(--primary-orange);
+    margin-bottom: 10px;
+}
+
+.pause-card p {
+    margin-bottom: 16px;
+}
+
+.howto-card {
+    width: min(560px, 92vw);
+    background: rgba(18, 22, 30, 0.98);
+    border: 2px solid var(--primary-orange);
+    border-radius: 10px;
+    padding: 24px;
+}
+
+.howto-card h2 {
+    color: var(--primary-orange);
+    margin-bottom: 12px;
+}
+
+.howto-card ul {
+    margin-left: 18px;
+    line-height: 1.8;
+    margin-bottom: 18px;
+}
+
 /* ===== BỐ CỤC CHÍNH ===== */
 .game-container {
     display: flex;
@@ -41,7 +194,8 @@ body {
     flex: 0 0 60%;
     display: flex;
     flex-direction: column;
-    gap: 15px;
+    gap: 12px;
+    min-width: 0;
 }
 
 .right-panel {
@@ -56,7 +210,24 @@ body {
     box-shadow: 0 0 20px rgba(255, 153, 0, 0.2);
 }
 
-/* ===== KHU VỰC BÊN TRÁI (CAMERA) ===== */
+/* ===== KHU VỰC BÊN TRÁI (GAME 2D & CAMERA PiP) ===== */
+.game-canvas-wrapper {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16/9;
+    border: 4px solid var(--primary-orange);
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    background: #000;
+    box-shadow: 0 0 15px rgba(255, 153, 0, 0.4);
+}
+
+.game-canvas-wrapper canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
 .video-container {
     position: relative;
     width: 100%;
@@ -65,7 +236,16 @@ body {
     border-radius: var(--border-radius);
     overflow: hidden;
     background: #000;
-    box-shadow: 0 0 15px rgba(255, 153, 0, 0.4);
+}
+
+.video-container.pip-mode {
+    position: absolute;
+    top: 15px;
+    left: 15px;
+    width: 25%;
+    border-width: 2px;
+    z-index: 10;
+    box-shadow: 0 0 15px rgba(0,0,0,0.8);
 }
 
 #webcam, #skeleton-overlay {
@@ -80,37 +260,63 @@ body {
 /* Nút bấm điều khiển */
 .controls-container {
     display: flex;
-    gap: 10px;
+    gap: 12px;
     justify-content: center;
+    align-items: center;
+}
+
+.overlay-toolbar {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 12;
+    padding: 8px;
+    border-radius: 10px;
+    background: rgba(10, 12, 18, 0.5);
+    backdrop-filter: blur(3px);
+    border: 1px solid rgba(255, 153, 0, 0.35);
 }
 
 .ninja-btn {
     font-family: 'Poppins', sans-serif;
-    font-weight: 800;
-    padding: 12px 24px;
-    background: var(--primary-orange);
-    color: #000;
-    border: none;
-    border-radius: 4px;
+    font-weight: 700;
+    font-size: 0.95rem;
+    height: 56px;
+    min-width: 220px;
+    padding: 0 22px;
+    background: linear-gradient(180deg, #ffb21f 0%, #ff9300 100%);
+    color: #171717;
+    border: 2px solid #ffb648;
+    border-radius: 8px;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.6px;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+.ninja-btn.ghost {
+    min-width: 140px;
+    background: linear-gradient(180deg, #2f3a4a 0%, #202a37 100%);
+    color: #d9e9ff;
+    border-color: #6f89ac;
 }
 .ninja-btn:hover {
-    background: #FFAA33;
-    transform: scale(1.05);
+    transform: translateY(-1px);
+    border-color: #ffd082;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.38), 0 0 16px rgba(255, 153, 0, 0.24);
 }
 .ninja-btn.danger {
-    background: rgba(0, 0, 0, 0.8); /* Lót nền đen đậm để che ảnh nền phía sau */
-    color: #ff4444; /* Màu đỏ sáng hơn để dễ đọc */
-    border: 2px solid #ff4444;
-    text-shadow: 2px 2px 4px #000; /* Phủ bóng đen cho chữ cực kỳ nổi bật */
+    background: linear-gradient(180deg, #252932 0%, #151a23 100%);
+    color: #ff6262;
+    border-color: #ff4b4b;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 .ninja-btn.danger:hover {
-    background: #ff4444;
-    color: #fff;
-    text-shadow: none;
+    background: linear-gradient(180deg, #2d313b 0%, #1a1f2a 100%);
+    color: #ff8c8c;
+    border-color: #ff7b7b;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5), 0 0 14px rgba(255, 98, 98, 0.22);
 }
 
 .story-box {
@@ -122,6 +328,162 @@ body {
     line-height: 1.5;
 }
 .hidden { display: none !important; }
+
+.defense-guide {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 14px;
+    z-index: 10;
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    align-items: center;
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--primary-orange);
+    background: rgba(0, 0, 0, 0.62);
+}
+
+.defense-item {
+    text-align: center;
+    font-size: 0.78rem;
+}
+
+.defense-item img {
+    width: 38px;
+    height: 38px;
+}
+
+.webcam-dock {
+    position: relative;
+    width: 100%;
+    min-height: 120px;
+    aspect-ratio: 4 / 3;
+    border: 2px solid var(--primary-orange);
+    border-radius: 8px;
+    overflow: hidden;
+    background: #000;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.45);
+}
+
+.webcam-dock video,
+.webcam-dock canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+}
+
+.webcam-dock canvas {
+    pointer-events: none;
+}
+
+.webcam-error {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #ff6a6a;
+    font-size: 13px;
+    text-align: center;
+    display: none;
+    padding: 0 8px;
+}
+
+.lower-panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr 280px;
+    gap: 12px;
+    align-items: stretch;
+}
+
+.keyboard-help-panel {
+    width: 100%;
+    min-height: 120px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 153, 0, 0.45);
+    background: rgba(10, 12, 18, 0.72);
+    backdrop-filter: blur(2px);
+}
+
+.keyboard-help-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--primary-orange);
+    text-transform: uppercase;
+}
+
+.keyboard-help-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.keyhelp-toggle {
+    border: 1px solid rgba(255, 153, 0, 0.5);
+    background: rgba(255, 153, 0, 0.12);
+    color: #ffd28a;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.keyboard-help-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 10px;
+    font-size: 0.72rem;
+    line-height: 1.35;
+}
+
+.keyboard-help-panel.collapsed .keyboard-help-grid {
+    display: none;
+}
+
+.keyboard-help-grid kbd {
+    display: inline-block;
+    min-width: 34px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    background: rgba(255, 255, 255, 0.1);
+    color: #f7f7f7;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-align: center;
+    margin-right: 5px;
+}
+
+@media (max-width: 1500px) {
+    .lower-panels {
+        grid-template-columns: 1fr 1fr 250px;
+    }
+    .ninja-btn {
+        min-width: 180px;
+        font-size: 0.88rem;
+    }
+}
+
+@media (max-width: 1200px) {
+    .lower-panels {
+        grid-template-columns: 1fr 1fr;
+    }
+    .webcam-dock {
+        grid-column: 1 / -1;
+        max-width: 360px;
+    }
+    .defense-guide {
+        transform: translateX(-50%) scale(0.95);
+        transform-origin: center bottom;
+    }
+}
 
 /* ===== KHU VỰC BÊN PHẢI (UI) ===== */
 .game-title {
@@ -285,6 +647,11 @@ body {
 }
 
 .log-entry {
+    padding: 4px 6px;
+    border-left: 3px solid rgba(255, 153, 0, 0.65);
+    line-height: 1.35;
+    word-break: break-word;
+}
 
 /* Animations & Feedback */
 .skill-slot.active {

@@ -24,7 +24,25 @@ socketio = SocketIO(
 )
 
 frame_count = 0 # Biến đếm để log
-game = GameState() # KHỞI TẠO TRẠNG THÁI GAME GLOBAL
+games = {} # Trạng thái game riêng theo từng Socket.IO client
+
+def get_client_game():
+    """Lấy hoặc tạo trạng thái game riêng cho client hiện tại."""
+    sid = request.sid
+    if sid not in games:
+        games[sid] = GameState()
+    return games[sid]
+
+def emit_game_update(game, ai_result):
+    """Tính toán và gửi game_update về đúng client."""
+    game_state = update_game_state(
+        game,
+        ai_result.get("skill"),
+        ai_result.get("block", False),
+        ai_result.get("dodge"),
+    )
+    game_state["landmarks"] = ai_result.get("landmarks", {})
+    emit('game_update', game_state)
 
 @socketio.on('connect')
 def handle_connect():
@@ -32,21 +50,23 @@ def handle_connect():
     sid = request.sid
     print(f"✅ Client đã kết nối: {sid}")
     
-    # Reset game mỗi khi có người chơi mới kết nối vào
-    game.reset_game()
+    games[sid] = GameState()
     
-    emit('game_status', {'msg': 'Kết nối máy chủ thành công. Sẵn sàng chiến đấu!'})
+    print(f"🎮 Game đã được reset. Sẵn sàng chiến đấu!")
 
 @socketio.on('disconnect')
 def handle_disconnect():
     """Sự kiện xảy ra khi Client ngắt kết nối."""
     sid = request.sid
+    games.pop(sid, None)
     print(f"❌ Client ngắt kết nối: {sid}")
 
 @socketio.on('reset_game')
 def handle_reset_game():
     """Sự kiện xảy ra khi người chơi bấm nút Chơi Lại trên web."""
-    print("🔄 Đang Reset toàn bộ trận đấu...")
+    sid = request.sid
+    game = get_client_game()
+    print(f"🔄 Đang Reset trận đấu cho client {sid}...")
     game.reset_game()
     # Không cần emit lại trạng thái máu, vì lần gửi ảnh tiếp theo sẽ tự cập nhật máu 100/100
 
@@ -61,6 +81,10 @@ def handle_video_frame(data):
         print(f"📡 Server đang nhận ảnh từ Webcam (Khung hình thứ {frame_count})...")
 
     try:
+        game = get_client_game()
+        if not isinstance(data, dict):
+            return
+
         image_data = data.get('image')
         if not image_data: return
 
@@ -80,22 +104,31 @@ def handle_video_frame(data):
         if ai_result["skill"]:
             print(f"🔥 Phát hiện tư thế: {ai_result['skill'].upper()}")
 
-        # 2. Đưa kết quả AI vào Engine Game Logic để tính toán
-        game_state = update_game_state(
-            game, 
-            ai_result["skill"], 
-            ai_result["block"], 
-            ai_result["dodge"]
-        )
-
-        # 3. Gộp tọa độ khung xương (để vẽ ở web) vào dữ liệu gửi về
-        game_state["landmarks"] = ai_result.get("landmarks", {})
-        
-        # 4. Gửi kết quả cuối cùng về Client
-        emit('game_update', game_state)
+        emit_game_update(game, ai_result)
 
     except Exception as e:
         print(f"⚠️ Lỗi xử lý frame: {str(e)}")
+
+@socketio.on('manual_input')
+def handle_manual_input(data):
+    """
+    Fallback khi không có webcam:
+    nhận input từ bàn phím frontend và update game state.
+    """
+    try:
+        game = get_client_game()
+        if not isinstance(data, dict):
+            return
+
+        ai_result = {
+            "skill": data.get("skill"),
+            "block": bool(data.get("block", False)),
+            "dodge": data.get("dodge"),
+            "landmarks": {}
+        }
+        emit_game_update(game, ai_result)
+    except Exception as e:
+        print(f"⚠️ Lỗi manual_input: {str(e)}")
 
 if __name__ == '__main__':
     # Khởi chạy server:

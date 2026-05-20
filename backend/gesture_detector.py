@@ -12,12 +12,14 @@ import numpy as np
 import os
 import urllib.request
 import math
+import threading
 
 class GestureDetector:
     def __init__(self):
         self.base_path = os.path.dirname(__file__)
         self.hand_model_path = os.path.join(self.base_path, 'hand_landmarker.task')
         self.pose_model_path = os.path.join(self.base_path, 'pose_landmarker.task')
+        self._inference_lock = threading.Lock()
         
         self._check_models()
         
@@ -59,8 +61,9 @@ class GestureDetector:
     def process_frame(self, image):
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
         
-        pose_res = self.pose_detector.detect(mp_image)
-        hand_res = self.hand_detector.detect(mp_image)
+        with self._inference_lock:
+            pose_res = self.pose_detector.detect(mp_image)
+            hand_res = self.hand_detector.detect(mp_image)
         
         result = {"skill": None, "block": False, "dodge": None, "message": "Chưa phát hiện cử chỉ"}
 
@@ -73,26 +76,38 @@ class GestureDetector:
         l_wr, r_wr = pose[15], pose[16] 
         l_hip, r_hip = pose[23], pose[24]
         
-        if l_sh.y > r_sh.y + 0.05: result["dodge"], result["message"] = "left", "Né sang TRÁI"
-        elif r_sh.y > l_sh.y + 0.05: result["dodge"], result["message"] = "right", "Né sang PHẢI"
+        # --- DODGE: chỉ phát hiện khi thân người nghiêng rõ ---
+        if l_sh.y > r_sh.y + 0.05:
+            result["dodge"], result["message"] = "left", "Né sang TRÁI"
+        elif r_sh.y > l_sh.y + 0.05:
+            result["dodge"], result["message"] = "right", "Né sang PHẢI"
 
         dist_wrists = self.get_distance(l_wr, r_wr)
-        if dist_wrists < 0.15 and l_wr.y < nose.y and r_wr.y < nose.y:
-            result["block"], result["message"] = True, "🛡️ ĐANG ĐỠ ĐÒN!"
-        
-        is_r_open = False
-        is_l_open = False
-        if hand_res.hand_landmarks:
-            for hand in hand_res.hand_landmarks:
-                if hand[0].x < 0.5: is_r_open = self.is_hand_open(hand)
-                else: is_l_open = self.is_hand_open(hand)
 
-        if dist_wrists < 0.15 and l_sh.y < l_wr.y < l_hip.y:
-            result["skill"], result["message"] = "kage_bunshin", "👥 KAGE BUNSHIN!"
-        elif l_wr.y < l_sh.y and r_wr.y < r_sh.y and is_r_open and is_l_open:
-            result["skill"], result["message"] = "rasenshuriken", "🌪️ RASENSHURIKEN!"
-        elif r_wr.y < r_sh.y and is_r_open:
-            result["skill"], result["message"] = "rasengan", "🌀 RASENGAN!"
+        # --- BLOCK & SKILL: bỏ qua khi đang dodge để tránh xung đột ---
+        if not result["dodge"]:
+            if dist_wrists < 0.15 and l_wr.y < nose.y and r_wr.y < nose.y:
+                result["block"], result["message"] = True, "🛡️ ĐANG ĐỠ ĐÒN!"
+
+            # Dùng handedness của MediaPipe thay vì x-position (chính xác hơn khi tay bắt chéo)
+            is_r_open = False
+            is_l_open = False
+            if hand_res.hand_landmarks:
+                for i, hand in enumerate(hand_res.hand_landmarks):
+                    label = hand_res.handedness[i][0].category_name
+                    if label == "Right":   # Tay phải của người chơi
+                        is_r_open = self.is_hand_open(hand)
+                    else:                  # Tay trái của người chơi
+                        is_l_open = self.is_hand_open(hand)
+
+            # Block được ưu tiên hơn skill để một frame không vừa đỡ vừa tung chiêu.
+            if not result["block"]:
+                if dist_wrists < 0.15 and l_sh.y < l_wr.y < l_hip.y:
+                    result["skill"], result["message"] = "kage_bunshin", "👥 KAGE BUNSHIN!"
+                elif l_wr.y < l_sh.y and r_wr.y < r_sh.y and is_r_open and is_l_open:
+                    result["skill"], result["message"] = "rasenshuriken", "🌪️ RASENSHURIKEN!"
+                elif r_wr.y < r_sh.y and is_r_open:
+                    result["skill"], result["message"] = "rasengan", "🌀 RASENGAN!"
 
         # Đóng gói tọa độ khung xương để vẽ ở frontend
         landmarks = {

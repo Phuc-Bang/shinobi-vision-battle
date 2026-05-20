@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(New-Item -ItemType Directory -Force -Path \"E:\\\\AI\\\\Computer-Vision\\\\shinobi-vision-battle\\\\.claude\\\\rules\")",
+      "Bash(Out-Null)",
+      "Bash(Write-Output \"OK\")",
+      "Bash(Get-ChildItem -Path \"E:\\\\AI\\\\Computer-Vision\\\\shinobi-vision-battle\\\\frontend\\\\assets\" -Recurse -Force)",
+      "Bash(Select-Object FullName, Length)",
+      "Bash(Format-Table -AutoSize)"
+    ]
+  }
+}

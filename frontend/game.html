@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shinobi Vision Battle - Naruto vs Mizuki</title>
+    <!-- Import Font Google: Poppins cho text dễ đọc và Press Start 2P cho tiêu đề game -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&family=Press+Start+2P&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- Thư viện SocketIO Client -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body>
+    <div id="pause-overlay" class="pause-overlay hidden">
+        <div class="pause-card">
+            <h2>Tạm Dừng</h2>
+            <p>Nhấn ESC để tiếp tục trận đấu</p>
+            <div class="menu-actions">
+                <button id="btn-resume-game" class="menu-btn primary">Tiếp Tục</button>
+                <button id="btn-pause-menu" class="menu-btn">Về Menu</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- KHU VỰC AUDIO: Chuẩn bị sẵn các thẻ âm thanh (src sẽ được điền sau) -->
+    <div id="audio-container" style="display:none;">
+        <audio id="bgm" loop></audio> <!-- Nhạc nền -->
+        <audio id="sfx-rasengan"></audio>
+        <audio id="sfx-shuriken"></audio>
+        <audio id="sfx-kage"></audio>
+        <audio id="sfx-kunai"></audio>
+        <audio id="sfx-win"></audio>
+        <audio id="sfx-lose"></audio>
+    </div>
+
+    <!-- KHUNG CHỨA TOÀN BỘ GAME -->
+    <div class="game-container">
+        
+        <!-- BÊN TRÁI: BẢN ĐỒ GAME 2D VÀ CAMERA (60%) -->
+        <div class="left-panel">
+            <!-- Game Canvas 2D container -->
+            <div id="canvas-container" class="game-canvas-wrapper">
+                <!-- JS sẽ tự chèn <canvas> vào đây -->
+                
+                <!-- Khu vực Nút bấm điều khiển (Nổi lên trên) -->
+                <div class="controls-container overlay-toolbar">
+                    <button id="btn-main-menu" class="btn ninja-btn ghost">🏠 Menu</button>
+                    <button id="btn-toggle-story" class="btn ninja-btn">📜 Xem Cốt Truyện</button>
+                    <button id="btn-reset" class="btn ninja-btn danger">🔄 Chơi Lại</button>
+                </div>
+                
+                <!-- Hướng dẫn cử chỉ phòng thủ (Nổi lên dưới đáy) -->
+                <div class="defense-guide">
+                    <div class="defense-item">
+                        <img src="assets/images/ui/skill_kagebunshin.png" alt="Block">
+                        <div>Tay chéo (Block)</div>
+                    </div>
+                    <div class="defense-item">
+                        <img src="assets/images/ui/skill_rasengan.png" alt="Dodge">
+                        <div>Nghiêng người (Dodge)</div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="lower-panels">
+                <!-- Khung hiển thị Cốt truyện (ẩn mặc định) -->
+                <div id="story-content" class="story-box hidden">
+                    <p>Nội dung cốt truyện sẽ hiện ở đây...</p>
+                </div>
+
+                <div class="keyboard-help-panel">
+                    <div class="keyboard-help-header">
+                        <div class="keyboard-help-title">Keyboard Test Controls</div>
+                        <button id="btn-toggle-keyhelp" class="keyhelp-toggle" aria-expanded="true">Thu gọn</button>
+                    </div>
+                    <div class="keyboard-help-grid">
+                        <span><kbd>1</kbd> Kage Bunshin</span>
+                        <span><kbd>2</kbd> Rasengan</span>
+                        <span><kbd>3</kbd> Rasenshuriken</span>
+                        <span><kbd>B</kbd> Block</span>
+                        <span><kbd>A / D</kbd> Dodge</span>
+                        <span><kbd>R</kbd> Reset</span>
+                        <span><kbd>H</kbd> Skeleton ON/OFF</span>
+                        <span><kbd>ESC</kbd> Pause</span>
+                    </div>
+                </div>
+
+                <div id="webcam-container" class="webcam-dock">
+                    <video id="webcam-video" autoplay playsinline muted></video>
+                    <canvas id="skeleton-overlay"></canvas>
+                    <div id="webcam-error" class="webcam-error">Không thể truy cập webcam</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- BÊN PHẢI: THÔNG SỐ VÀ KỸ NĂNG (35%) -->
+        <div class="right-panel">
+            <h1 class="game-title">SHINOBI BATTLE</h1>
+            
+            <!-- KHU VỰC THANH MÁU (HP) -->
+            <div class="health-board">
+                <!-- Thanh máu Naruto (Người chơi) -->
+                <div class="character-stats">
+                    <div class="char-info">
+                        <img src="assets/images/sprites/naruto/avatar_naruto.png" class="avatar-img" alt="Naruto">
+                        <span class="name">NARUTO (Player)</span>
+                    </div>
+                    <div class="health-bar-bg">
+                        <div id="player-hp-fill" class="health-fill player-hp"></div>
+                        <span id="player-hp-text" class="hp-text">100/100</span>
+                    </div>
+                </div>
+
+                <!-- Thanh máu Mizuki (Boss) -->
+                <div class="character-stats">
+                    <div class="char-info">
+                        <img src="assets/images/sprites/mizuki/avatar_mizuki.png" class="avatar-img" alt="Mizuki">
+                        <span class="name">MIZUKI (Boss)</span>
+                    </div>
+                    <div class="health-bar-bg">
+                        <div id="enemy-hp-fill" class="health-fill enemy-hp"></div>
+                        <span id="enemy-hp-text" class="hp-text">100/100</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KHU VỰC KỸ NĂNG (SKILLS) -->
+            <div class="skills-board">
+                <!-- Skill Kage Bunshin -->
+                <div class="skill" id="skill-kage">
+                    <img src="assets/images/ui/skill_kagebunshin.png" class="skill-icon-img" alt="Kage Bunshin">
+                    <div class="skill-name">Kage Bunshin</div>
+                    <!-- Lớp phủ mờ hiển thị đếm ngược Cooldown -->
+                    <div id="cooldown-kage" class="cooldown-overlay hidden">0.0</div>
+                </div>
+                
+                <!-- Skill Rasengan -->
+                <div class="skill" id="skill-rasengan">
+                    <img src="assets/images/ui/skill_rasengan.png" class="skill-icon-img" alt="Rasengan">
+                    <div class="skill-name">Rasengan</div>
+                    <div id="cooldown-rasengan" class="cooldown-overlay hidden">0.0</div>
+                </div>
+                
+                <!-- Skill Rasenshuriken -->
+                <div class="skill" id="skill-shuriken">
+                    <img src="assets/images/ui/skill_rasenshuriken.png" class="skill-icon-img" alt="Rasenshuriken">
+                    <div class="skill-name">Rasenshuriken</div>
+                    <div id="cooldown-shuriken" class="cooldown-overlay hidden">0.0</div>
+                    <!-- Số lần sử dụng còn lại -->
+                    <div id="shuriken-count" class="skill-count">3/3</div>
+                </div>
+            </div>
+
+            <!-- KHU VỰC NHẬT KÝ CHIẾN ĐẤU (LOG) -->
+            <div class="log-board">
+                <h3 class="log-title">NHẬT KÝ CHIẾN ĐẤU</h3>
+                <div id="log" class="log-area">
+                    <!-- Các dòng Log sẽ được thêm vào đây bằng JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script Game 2D và Logic kết nối AI -->
+    <script src="js/sprite.js"></script>
+    <script src="js/character.js"></script>
+    <script src="js/gameEngine.js"></script>
+    <script src="js/game2d.js"></script>
+    <script src="js/webcamFeed.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
