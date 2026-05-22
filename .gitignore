@@ -1,6 +1,7 @@
 # --- Python ---
 venv/
 .venv/
+desktop/.venv/
 __pycache__/
 **/__pycache__/
 *.py[cod]
@@ -13,6 +14,7 @@ backend/*.task
 # --- Node / Frontend (Dự phòng) ---
 node_modules/       # Thư mục thư viện Node.js
 dist/               # Thư mục build
+build/              # Thư mục build PyInstaller
 .DS_Store           # File hệ thống macOS
 
 # --- Editor ---

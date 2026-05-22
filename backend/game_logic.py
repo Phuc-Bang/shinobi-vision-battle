@@ -45,7 +45,7 @@ class GameState:
 
     def apply_player_skill(self, skill_name, is_blocking, dodge_dir):
         """Xử lý sát thương và hiệu ứng khi người chơi tung chiêu."""
-        result = {"damage_dealt": 0, "message": ""}
+        result = {"damage_dealt": 0, "message": "", "action": None, "hit": False}
         
         if self.game_over or not skill_name:
             return result
@@ -58,6 +58,7 @@ class GameState:
                 return result # Chưa hồi xong
             base_damage = 15
             self.last_skill_time["rasengan"] = now
+            result["action"] = "rasengan"
             
         elif skill_name == "rasenshuriken":
             if self.rasenshuriken_used_count >= 3:
@@ -68,6 +69,7 @@ class GameState:
             base_damage = 30
             self.last_skill_time["rasenshuriken"] = now
             self.rasenshuriken_used_count += 1
+            result["action"] = "rasenshuriken"
             
         elif skill_name == "kage_bunshin":
             if now - self.last_skill_time["kage_bunshin"] < 5.0:
@@ -76,6 +78,7 @@ class GameState:
             self.player_buff_end_time = now + 5.0
             self.player_damage_multiplier = 1.5
             self.last_skill_time["kage_bunshin"] = now
+            result["action"] = "kage_bunshin"
             result["message"] = "🔥 Đa Trọng Ảnh Phân Thân! Sát thương x1.5"
             return result
         else:
@@ -91,13 +94,14 @@ class GameState:
         self.bot_hp = max(0, self.bot_hp - total_damage)
         
         result["damage_dealt"] = total_damage
+        result["hit"] = True
         result["message"] = f"💥 Trúng đòn! {skill_name.upper()} gây {total_damage} sát thương!"
         
         return result
 
     def apply_bot_attack(self, is_blocking, dodge_dir):
         """Xử lý Boss Mizuki ném phi tiêu tấn công tự động."""
-        result = {"damage_dealt": 0, "message": ""}
+        result = {"damage_dealt": 0, "message": "", "action": None, "hit": False}
         now = time.time()
         
         if self.game_over or now < self.next_bot_attack_time:
@@ -105,9 +109,10 @@ class GameState:
 
         # Tính toán lần tấn công tiếp theo (Random từ 4s đến 5.5s)
         self.next_bot_attack_time = now + random.uniform(4.0, 5.5)
+        result["action"] = "kunai"
         
-        # Boss ném Kunai (Sát thương 10)
-        bot_damage = 10
+        # Boss ném Kunai (Sát thương 5)
+        bot_damage = 5
         
         # Kiểm tra người chơi có đang phòng thủ hoặc né không
         if is_blocking:
@@ -115,6 +120,7 @@ class GameState:
             reduced = max(1, int(bot_damage * 0.3))
             self.player_hp = max(0, self.player_hp - reduced)
             result["damage_dealt"] = reduced
+            result["hit"] = True
             result["message"] = f"🛡️ Đỡ được Kunai! Nhận {reduced} sát thương (giảm 70%)."
         elif dodge_dir:
             result["message"] = f"🏃 Né thành công Kunai của Mizuki!"
@@ -122,6 +128,7 @@ class GameState:
             # Dính đòn toàn bộ
             self.player_hp = max(0, self.player_hp - bot_damage)
             result["damage_dealt"] = bot_damage
+            result["hit"] = True
             result["message"] = f"🔪 Dính Kunai! Bạn mất {bot_damage} máu!"
             self.bot_last_action = "throw_kunai"
 
@@ -195,5 +202,11 @@ def update_game_state(game, player_skill, is_blocking, dodge_dir):
         "winner": game.winner,
         "event_id": event_id,
         "last_message": last_message,
-        "story_message": story_msg
+        "story_message": story_msg,
+        "player_action": skill_res.get("action"),
+        "player_hit": skill_res.get("hit", False),
+        "player_damage_dealt": skill_res.get("damage_dealt", 0),
+        "bot_action": bot_res.get("action"),
+        "bot_hit": bot_res.get("hit", False),
+        "bot_damage_dealt": bot_res.get("damage_dealt", 0),
     }

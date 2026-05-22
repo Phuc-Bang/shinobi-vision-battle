@@ -45,8 +45,110 @@ let showSkeleton = true;
 let socketRef = null;
 let keyHelpAutoCollapseTimer = null;
 let smoothedLandmarksCache = { pose: [], hands: [] };
-const LANDMARK_EMA_ALPHA = 0.35;
+const LANDMARK_EMA_ALPHA = 0.8;
+let backendCameraMode = false;
+let backendPreviewImg = null;
+let lastSkeletonDrawAt = 0;
+let lastPreviewUpdateAt = 0;
+const SKELETON_DRAW_FPS = 60;
+const PREVIEW_UPDATE_FPS = 15;
+let backendPreviewBusy = false;
+let backendPreviewPendingB64 = null;
+let backendPreviewPendingBytes = null;
+let backendPreviewLastSeq = 0;
+let backendPreviewObjectUrl = null;
 window.gameConfig = window.gameConfig || { player: "naruto", bot: "mizuki", map: "arena" };
+
+function pushBackendPreviewFrame(b64) {
+    const preview = ensureBackendPreviewImage();
+    if (!preview || !b64) return;
+    if (backendPreviewBusy) {
+        backendPreviewPendingB64 = b64;
+        return;
+    }
+    backendPreviewBusy = true;
+    preview.src = `data:image/jpeg;base64,${b64}`;
+}
+
+function pushBackendPreviewFrameBytes(imageBytes) {
+    const preview = ensureBackendPreviewImage();
+    if (!preview || !imageBytes) return;
+    if (typeof imageBytes === "string") {
+        pushBackendPreviewFrame(imageBytes);
+        return;
+    }
+    if (backendPreviewBusy) {
+        backendPreviewPendingBytes = imageBytes;
+        return;
+    }
+    backendPreviewBusy = true;
+    const bytes =
+        imageBytes instanceof ArrayBuffer
+            ? imageBytes
+            : imageBytes?.buffer instanceof ArrayBuffer
+              ? imageBytes.buffer.slice(
+                    imageBytes.byteOffset || 0,
+                    (imageBytes.byteOffset || 0) + imageBytes.byteLength,
+                )
+              : null;
+    if (!bytes) {
+        backendPreviewBusy = false;
+        return;
+    }
+    const blob = new Blob([bytes], { type: "image/jpeg" });
+    if (backendPreviewObjectUrl) {
+        URL.revokeObjectURL(backendPreviewObjectUrl);
+    }
+    backendPreviewObjectUrl = URL.createObjectURL(blob);
+    preview.src = backendPreviewObjectUrl;
+}
+
+function ensureBackendPreviewImage() {
+    if (backendPreviewImg) return backendPreviewImg;
+    const webcamContainer = document.getElementById("webcam-container");
+    if (!webcamContainer) return null;
+    const img = document.createElement("img");
+    img.id = "backend-camera-preview";
+    img.alt = "Backend camera preview";
+    img.style.position = "absolute";
+    img.style.inset = "0";
+    img.style.width = "100%";
+    img.style.height = "100%";
+    img.style.objectFit = "cover";
+    img.style.zIndex = "1";
+    img.decoding = "async";
+    img.onload = () => {
+        backendPreviewBusy = false;
+        const webcamError = document.getElementById("webcam-error");
+        if (webcamError) {
+            webcamError.style.display = "none";
+        }
+        if (backendPreviewPendingB64) {
+            const nextB64 = backendPreviewPendingB64;
+            backendPreviewPendingB64 = null;
+            pushBackendPreviewFrame(nextB64);
+            return;
+        }
+        if (backendPreviewPendingBytes) {
+            const nextBytes = backendPreviewPendingBytes;
+            backendPreviewPendingBytes = null;
+            pushBackendPreviewFrameBytes(nextBytes);
+        }
+    };
+    img.onerror = () => {
+        backendPreviewBusy = false;
+        const webcamError = document.getElementById("webcam-error");
+        if (webcamError) {
+            webcamError.style.display = "block";
+            webcamError.innerText = "Lỗi hiển thị backend camera preview.";
+        }
+        backendPreviewPendingB64 = null;
+        backendPreviewPendingBytes = null;
+    };
+    webcamContainer.appendChild(img);
+    backendPreviewImg = img;
+    return img;
+}
 
 function emaPoint(prev, curr, alpha = LANDMARK_EMA_ALPHA) {
     if (!prev) return curr;
@@ -201,6 +303,9 @@ const HAND_CONNECTIONS = [
  */
 function drawSkeleton(landmarks) {
     if (!ctx || !canvas) return;
+    const now = performance.now();
+    if (now - lastSkeletonDrawAt < (1000 / SKELETON_DRAW_FPS)) return;
+    lastSkeletonDrawAt = now;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (!showSkeleton) return;
     if (!landmarks) return;
@@ -323,6 +428,69 @@ document.addEventListener("DOMContentLoaded", () => {
         window.gameEngine.instance.addLog("⚠️ Không thể kết nối backend tại localhost:5000.", "system");
     });
 
+    socket.on('server_config', (cfg) => {
+        backendCameraMode = !!cfg?.backend_camera_mode;
+        if (!backendCameraMode) return;
+        if (window.webcamFeed) {
+            window.webcamFeed.stopWebcam();
+        }
+        const webcamVideo = document.getElementById("webcam-video");
+        if (webcamVideo) {
+            webcamVideo.style.display = "none";
+        }
+        const webcamContainer = document.getElementById("webcam-container");
+        if (webcamContainer) {
+            webcamContainer.classList.add("backend-camera-mode");
+        }
+        const preview = ensureBackendPreviewImage();
+        if (preview) {
+            preview.style.display = "block";
+        }
+        const webcamError = document.getElementById("webcam-error");
+        if (webcamError) {
+            webcamError.style.display = "block";
+            webcamError.innerText = "Backend Camera Mode: webcam xử lý ở server.";
+        }
+        window.gameEngine.instance.addLog("🎥 Backend camera mode ON.", "system");
+    });
+
+    socket.on("camera_preview", (payload) => {
+        if (!backendCameraMode) return;
+        const now = performance.now();
+        if (now - lastPreviewUpdateAt < (1000 / PREVIEW_UPDATE_FPS)) return;
+        lastPreviewUpdateAt = now;
+        const seq = Number(payload?.seq || 0);
+        if (seq && seq <= backendPreviewLastSeq) return;
+        if (seq) backendPreviewLastSeq = seq;
+
+        const b64 = payload?.image_b64;
+        if (typeof b64 === "string" && b64.length > 0) {
+            pushBackendPreviewFrame(b64);
+            return;
+        }
+
+        const preview = ensureBackendPreviewImage();
+        if (!preview) return;
+        const image = payload?.image;
+        if (typeof image === "string" && image.length > 0) {
+            preview.src = image;
+        }
+    });
+
+    socket.on("camera_preview_bin", (payload) => {
+        if (!backendCameraMode) return;
+        const now = performance.now();
+        if (now - lastPreviewUpdateAt < (1000 / PREVIEW_UPDATE_FPS)) return;
+        lastPreviewUpdateAt = now;
+        const seq = Number(payload?.seq || 0);
+        if (seq && seq <= backendPreviewLastSeq) return;
+        if (seq) backendPreviewLastSeq = seq;
+        const bytes = payload?.image_bytes;
+        if (bytes) {
+            pushBackendPreviewFrameBytes(bytes);
+        }
+    });
+
     let isGameOverProcessed = false;
 
     socket.on('game_update', (data) => {
@@ -376,7 +544,7 @@ document.addEventListener("DOMContentLoaded", () => {
     syncSelectDefaults();
     setMenuVisible(hasMenuPage);
     setPauseVisible(false);
-    if (window.webcamFeed) {
+    if (window.webcamFeed && !backendCameraMode) {
         window.webcamFeed.initWebcam(socket, () => {
             return !isGameRunning || isPaused; // true = dừng gửi frame khi menu/pause
         });

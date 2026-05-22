@@ -14,8 +14,12 @@ from collections import deque
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from flask import Flask, request
 from flask_socketio import SocketIO, emit
-from gesture_detector import process_frame # Import trực tiếp hàm xử lý từ AI
-from game_logic import GameState, update_game_state # Import Logic Game
+try:
+    from backend.gesture_detector import process_frame  # Package mode
+    from backend.game_logic import GameState, update_game_state
+except ImportError:
+    from gesture_detector import process_frame  # Script mode fallback
+    from game_logic import GameState, update_game_state
 
 # Khởi tạo ứng dụng Flask
 app = Flask(__name__)
@@ -46,6 +50,29 @@ if INFERENCE_MODE not in ("thread", "process"):
     INFERENCE_MODE = "thread"
 LATENCY_LOG_INTERVAL_SEC = float(os.getenv("LATENCY_LOG_INTERVAL_SEC", "5"))
 inference_pool = None
+BACKEND_CAMERA_MODE = os.getenv("BACKEND_CAMERA_MODE", "0").strip() in ("1", "true", "True")
+CAMERA_INDEX = int(os.getenv("CAMERA_INDEX", "0"))
+BACKEND_CAMERA_FPS = float(os.getenv("BACKEND_CAMERA_FPS", "15"))
+if BACKEND_CAMERA_FPS <= 0:
+    BACKEND_CAMERA_FPS = 15.0
+CAMERA_WIDTH = int(os.getenv("CAMERA_WIDTH", "640"))
+CAMERA_HEIGHT = int(os.getenv("CAMERA_HEIGHT", "480"))
+BACKEND_PREVIEW_FPS = float(os.getenv("BACKEND_PREVIEW_FPS", "15"))
+if BACKEND_PREVIEW_FPS <= 0:
+    BACKEND_PREVIEW_FPS = 15.0
+BACKEND_PREVIEW_JPEG_QUALITY = int(os.getenv("BACKEND_PREVIEW_JPEG_QUALITY", "40"))
+if BACKEND_PREVIEW_JPEG_QUALITY < 20:
+    BACKEND_PREVIEW_JPEG_QUALITY = 20
+if BACKEND_PREVIEW_JPEG_QUALITY > 95:
+    BACKEND_PREVIEW_JPEG_QUALITY = 95
+BACKEND_PREVIEW_MAX_WIDTH = int(os.getenv("BACKEND_PREVIEW_MAX_WIDTH", "320"))
+if BACKEND_PREVIEW_MAX_WIDTH < 200:
+    BACKEND_PREVIEW_MAX_WIDTH = 200
+camera_thread = None
+camera_stop_event = threading.Event()
+camera_loop_lock = threading.Lock()
+active_backend_camera_sid = None
+preview_seq = 0
 
 def get_client_game():
     """Lấy hoặc tạo trạng thái game riêng cho client hiện tại."""
@@ -155,6 +182,105 @@ def handle_inference_done(sid, start_ts, future):
                 pending_start_ts.pop(sid, None)
         maybe_log_latency(sid)
 
+def run_backend_camera_loop():
+    """Đọc camera trực tiếp ở backend và xử lý AI theo active sid."""
+    global frame_count, preview_seq
+    cap = cv2.VideoCapture(CAMERA_INDEX)
+    if not cap.isOpened():
+        print(f"❌ Không mở được backend camera index={CAMERA_INDEX}")
+        return
+
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
+    cap.set(cv2.CAP_PROP_FPS, BACKEND_CAMERA_FPS)
+    frame_interval = 1.0 / BACKEND_CAMERA_FPS
+    preview_every_n = max(1, int(round(BACKEND_CAMERA_FPS / BACKEND_PREVIEW_FPS)))
+    print(
+        f"🎥 Backend camera mode ON | index={CAMERA_INDEX} | "
+        f"{CAMERA_WIDTH}x{CAMERA_HEIGHT} @ {BACKEND_CAMERA_FPS:.1f}fps"
+    )
+
+    try:
+        while not camera_stop_event.is_set():
+            sid = active_backend_camera_sid
+            if not sid or sid not in games:
+                time.sleep(0.05)
+                continue
+
+            frame_start = time.perf_counter()
+            ok, frame = cap.read()
+            if not ok or frame is None:
+                time.sleep(0.02)
+                continue
+
+            frame_count += 1
+            if frame_count == 1 or frame_count % 30 == 0:
+                print(f"📡 Backend camera frame {frame_count}...")
+
+            ai_result = process_frame(frame)
+            if ai_result.get("skill"):
+                print(f"🔥 [{sid[:6]}] Phát hiện tư thế: {ai_result['skill'].upper()}")
+
+            game = games.get(sid)
+            lock = game_locks.get(sid)
+            if game is not None and lock is not None:
+                with lock:
+                    emit_game_update(game, ai_result, sid=sid)
+
+            if frame_count % preview_every_n == 0:
+                preview_frame = frame
+                ph, pw = frame.shape[:2]
+                if pw > BACKEND_PREVIEW_MAX_WIDTH:
+                    scale = BACKEND_PREVIEW_MAX_WIDTH / float(pw)
+                    preview_frame = cv2.resize(
+                        frame,
+                        (BACKEND_PREVIEW_MAX_WIDTH, int(ph * scale)),
+                        interpolation=cv2.INTER_AREA,
+                    )
+                ok_preview, encoded = cv2.imencode(
+                    ".jpg",
+                    preview_frame,
+                    [int(cv2.IMWRITE_JPEG_QUALITY), BACKEND_PREVIEW_JPEG_QUALITY],
+                )
+                if ok_preview:
+                    preview_seq += 1
+                    socketio.emit(
+                        "camera_preview_bin",
+                        {"seq": preview_seq, "image_bytes": encoded.tobytes()},
+                        to=sid,
+                    )
+
+            elapsed_ms = (time.perf_counter() - frame_start) * 1000.0
+            with runtime_lock:
+                stats = latency_stats.get(sid)
+                if stats:
+                    stats["samples_ms"].append(elapsed_ms)
+                    stats["processed"] += 1
+            maybe_log_latency(sid)
+
+            remaining = frame_interval - (time.perf_counter() - frame_start)
+            if remaining > 0:
+                time.sleep(remaining)
+    finally:
+        cap.release()
+        print("🛑 Backend camera loop stopped.")
+
+def ensure_backend_camera_loop():
+    global camera_thread
+    if not BACKEND_CAMERA_MODE:
+        return
+    with camera_loop_lock:
+        if camera_thread and camera_thread.is_alive():
+            return
+        camera_stop_event.clear()
+        camera_thread = threading.Thread(target=run_backend_camera_loop, daemon=True)
+        camera_thread.start()
+
+def stop_backend_camera_loop():
+    if not BACKEND_CAMERA_MODE:
+        return
+    camera_stop_event.set()
+
 
 @socketio.on('connect')
 def handle_connect():
@@ -165,6 +291,11 @@ def handle_connect():
     games[sid] = GameState()
     game_locks[sid] = threading.Lock()
     ensure_client_runtime(sid)
+    emit('server_config', {"backend_camera_mode": BACKEND_CAMERA_MODE})
+    if BACKEND_CAMERA_MODE:
+        global active_backend_camera_sid
+        active_backend_camera_sid = sid
+        ensure_backend_camera_loop()
     
     print(f"🎮 Game đã được reset. Sẵn sàng chiến đấu!")
 
@@ -178,6 +309,11 @@ def handle_disconnect():
     pending_futures.pop(sid, None)
     pending_start_ts.pop(sid, None)
     latency_stats.pop(sid, None)
+    global active_backend_camera_sid
+    if BACKEND_CAMERA_MODE and active_backend_camera_sid == sid:
+        active_backend_camera_sid = next(iter(games.keys()), None)
+        if active_backend_camera_sid is None:
+            stop_backend_camera_loop()
     print(f"❌ Client ngắt kết nối: {sid}")
 
 @socketio.on('reset_game')
@@ -195,6 +331,8 @@ def handle_video_frame(data):
     Sự kiện nhận frame ảnh từ Webcam của client gửi lên liên tục.
     """
     global frame_count
+    if BACKEND_CAMERA_MODE:
+        return
     frame_count += 1
     if frame_count == 1 or frame_count % 30 == 0:
         print(f"📡 Server đang nhận ảnh từ Webcam (Khung hình thứ {frame_count})...")

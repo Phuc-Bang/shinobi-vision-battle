@@ -381,6 +381,11 @@ body {
     pointer-events: none;
 }
 
+.webcam-dock.backend-camera-mode canvas,
+.webcam-dock.backend-camera-mode #backend-camera-preview {
+    transform: scaleX(-1);
+}
+
 .webcam-error {
     position: absolute;
     top: 50%;

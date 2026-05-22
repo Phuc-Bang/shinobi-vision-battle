@@ -26,6 +26,10 @@ class GestureDetector:
     def __init__(self):
         self.base_path = os.path.dirname(__file__)
         self.hand_model_path = os.path.join(self.base_path, 'hand_landmarker.task')
+        self.stability_preset = os.getenv("GESTURE_STABILITY_PRESET", "balanced").strip().lower()
+        if self.stability_preset not in ("fast", "balanced", "stable"):
+            self.stability_preset = "balanced"
+        stability = self._stability_defaults(self.stability_preset)
         self.pose_model_variant = os.getenv("POSE_MODEL_VARIANT", "lite").strip().lower()
         if self.pose_model_variant not in ("lite", "full", "heavy"):
             self.pose_model_variant = "lite"
@@ -34,22 +38,29 @@ class GestureDetector:
         )
         self._inference_lock = threading.Lock()
         self.frame_index = 0
-        self.hand_detect_interval = int(os.getenv("HAND_DETECT_INTERVAL", "2"))
+        self.hand_detect_interval = self._env_int("HAND_DETECT_INTERVAL", stability["hand_detect_interval"])
         self.last_hand_state = {"right_open": False, "left_open": False}
         self.last_hand_landmarks = []
         self.hand_missing_frames = 0
-        self.clear_hand_after_misses = int(os.getenv("CLEAR_HAND_AFTER_MISSES", "3"))
-        self.max_infer_width = int(os.getenv("MAX_INFER_WIDTH", "640"))
-        self.skill_smooth_window = int(os.getenv("SKILL_SMOOTH_WINDOW", "4"))
+        self.clear_hand_after_misses = self._env_int(
+            "CLEAR_HAND_AFTER_MISSES", stability["clear_hand_after_misses"]
+        )
+        self.max_infer_width = self._env_int("MAX_INFER_WIDTH", stability["max_infer_width"])
+        self.skill_smooth_window = self._env_int("SKILL_SMOOTH_WINDOW", stability["skill_smooth_window"])
         self.skill_history = deque(maxlen=max(2, self.skill_smooth_window))
-        self.pose_ema_alpha = float(os.getenv("POSE_EMA_ALPHA", "0.35"))
+        self.pose_ema_alpha = self._env_float("POSE_EMA_ALPHA", stability["pose_ema_alpha"])
         self.pose_keypoint_cache = {}
-        self.dodge_threshold = float(os.getenv("DODGE_SHOULDER_DIFF", "0.07"))
-        self.block_wrist_dist = float(os.getenv("BLOCK_WRIST_DIST", "0.14"))
-        self.kage_wrist_dist = float(os.getenv("KAGE_WRIST_DIST", "0.13"))
-        self.action_confirm_frames = int(os.getenv("ACTION_CONFIRM_FRAMES", "2"))
-        self.skill_repeat_cooldown_frames = int(os.getenv("SKILL_REPEAT_COOLDOWN_FRAMES", "8"))
-        self.skill_release_frames = int(os.getenv("SKILL_RELEASE_FRAMES", "8"))
+        self.dodge_threshold = self._env_float("DODGE_SHOULDER_DIFF", stability["dodge_threshold"])
+        self.block_wrist_dist = self._env_float("BLOCK_WRIST_DIST", stability["block_wrist_dist"])
+        self.kage_wrist_dist = self._env_float("KAGE_WRIST_DIST", stability["kage_wrist_dist"])
+        self.action_confirm_frames = self._env_int("ACTION_CONFIRM_FRAMES", stability["action_confirm_frames"])
+        self.skill_repeat_cooldown_frames = self._env_int(
+            "SKILL_REPEAT_COOLDOWN_FRAMES", stability["skill_repeat_cooldown_frames"]
+        )
+        self.skill_release_frames = self._env_int("SKILL_RELEASE_FRAMES", stability["skill_release_frames"])
+        self.skill_switch_guard_frames = self._env_int(
+            "SKILL_SWITCH_GUARD_FRAMES", stability["skill_switch_guard_frames"]
+        )
         self.last_emitted_skill = None
         self.last_skill_frame = -999
         self.no_skill_frames = self.skill_release_frames
@@ -82,6 +93,59 @@ class GestureDetector:
             min_tracking_confidence=0.45,
         )
         self.pose_detector = vision.PoseLandmarker.create_from_options(pose_options)
+
+    def _env_int(self, name, default):
+        return int(os.getenv(name, str(default)))
+
+    def _env_float(self, name, default):
+        return float(os.getenv(name, str(default)))
+
+    def _stability_defaults(self, preset):
+        presets = {
+            "fast": {
+                "hand_detect_interval": 1,
+                "clear_hand_after_misses": 2,
+                "max_infer_width": 640,
+                "skill_smooth_window": 3,
+                "pose_ema_alpha": 0.45,
+                "dodge_threshold": 0.065,
+                "block_wrist_dist": 0.145,
+                "kage_wrist_dist": 0.135,
+                "action_confirm_frames": 1,
+                "skill_repeat_cooldown_frames": 6,
+                "skill_release_frames": 5,
+                "skill_switch_guard_frames": 1,
+            },
+            "balanced": {
+                "hand_detect_interval": 2,
+                "clear_hand_after_misses": 3,
+                "max_infer_width": 640,
+                "skill_smooth_window": 4,
+                "pose_ema_alpha": 0.35,
+                "dodge_threshold": 0.07,
+                "block_wrist_dist": 0.14,
+                "kage_wrist_dist": 0.13,
+                "action_confirm_frames": 2,
+                "skill_repeat_cooldown_frames": 8,
+                "skill_release_frames": 8,
+                "skill_switch_guard_frames": 2,
+            },
+            "stable": {
+                "hand_detect_interval": 2,
+                "clear_hand_after_misses": 4,
+                "max_infer_width": 640,
+                "skill_smooth_window": 5,
+                "pose_ema_alpha": 0.28,
+                "dodge_threshold": 0.08,
+                "block_wrist_dist": 0.13,
+                "kage_wrist_dist": 0.12,
+                "action_confirm_frames": 3,
+                "skill_repeat_cooldown_frames": 12,
+                "skill_release_frames": 10,
+                "skill_switch_guard_frames": 3,
+            },
+        }
+        return presets[preset]
 
     def _check_models(self):
         pose_url_map = {
@@ -154,7 +218,20 @@ class GestureDetector:
 
         self.no_skill_frames = 0
         frames_since_emit = self.frame_index - self.last_skill_frame
-        if self.last_emitted_skill is not None:
+        if self.last_emitted_skill is None:
+            self.last_emitted_skill = skill
+            self.last_skill_frame = self.frame_index
+            return skill
+
+        # Cùng một skill: chỉ cho phát lại sau một khoảng cooldown frame.
+        if skill == self.last_emitted_skill:
+            if frames_since_emit >= max(1, self.skill_repeat_cooldown_frames):
+                self.last_skill_frame = self.frame_index
+                return skill
+            return None
+
+        # Đổi skill quá nhanh thường là nhiễu do tracking dao động.
+        if frames_since_emit < max(1, self.skill_switch_guard_frames):
             return None
 
         self.last_emitted_skill = skill
@@ -294,8 +371,28 @@ class GestureDetector:
         result["landmarks"] = landmarks
         return result
 
-# Instance toàn cục
-_detector = GestureDetector()
+_detector = None
+_detector_lock = threading.Lock()
+_detector_init_error = None
+
+
+def _get_detector():
+    global _detector, _detector_init_error
+    if _detector is not None:
+        return _detector
+    with _detector_lock:
+        if _detector is not None:
+            return _detector
+        if _detector_init_error is not None:
+            raise RuntimeError(_detector_init_error)
+        try:
+            _detector = GestureDetector()
+        except Exception as exc:
+            _detector_init_error = f"Không thể khởi tạo gesture detector: {exc}"
+            raise RuntimeError(_detector_init_error) from exc
+    return _detector
+
 
 def process_frame(image):
-    return _detector.process_frame(image)
+    detector = _get_detector()
+    return detector.process_frame(image)
