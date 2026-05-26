@@ -9,12 +9,21 @@ import random
 
 class GameState:
     def __init__(self):
+        self.campaign_stage = 1
         self.reset_game()
 
     def reset_game(self):
         """Khởi tạo lại toàn bộ thông số trận đấu."""
         self.player_hp = 100
-        self.bot_hp = 100
+        
+        # Thiết lập máu Boss tùy màn chơi
+        if self.campaign_stage == 1:
+            self.bot_hp = 80
+        elif self.campaign_stage == 2:
+            self.bot_hp = 100
+        else:
+            self.bot_hp = 130
+            
         self.player_chakra = 50.0
         self.max_chakra = 100.0
         self.last_update_time = time.time()
@@ -38,14 +47,30 @@ class GameState:
         self.game_over = False
         self.winner = None
 
-        # Reset cốt truyện mỗi ván để triggered flags được xóa
-        self.story_messages = [
-            {"threshold": 100, "msg": "Mizuki: Ngươi nghĩ vài trò vặt đó có thể đánh bại ta sao, Naruto?", "triggered": False},
-            {"threshold": 50, "msg": "Mizuki: Tên nhóc này... sức mạnh của hắn từ đâu ra vậy?!", "triggered": False},
-            {"threshold": 30, "msg": "Naruto: Ta sẽ không bỏ cuộc! Đó là nhẫn đạo của ta!", "triggered": False},
-            {"threshold": 10, "msg": "Mizuki: Không thể nào! Cuộn giấy phong ấn... sức mạnh của Cửu Vĩ...", "triggered": False},
-            {"threshold": 0, "msg": "Naruto: Kết thúc rồi, Mizuki!", "triggered": False}
-        ]
+        # Reset cốt truyện tùy chỉnh theo màn chơi
+        if self.campaign_stage == 1:
+            self.story_messages = [
+                {"threshold": 80, "msg": "Iruka: Bắt đầu luyện tập nào Naruto! Đỡ lấy phi tiêu của ta!", "triggered": False},
+                {"threshold": 40, "msg": "Iruka: Tốt lắm! Cố gắng né tránh hoặc phản đòn gỗ thế mạng!", "triggered": False},
+                {"threshold": 10, "msg": "Iruka: Em đã tiến bộ rất nhiều, Naruto!", "triggered": False},
+                {"threshold": 0, "msg": "Iruka: Huấn luyện hoàn tất! Em đã sẵn sàng chiến đấu thực tế!", "triggered": False}
+            ]
+        elif self.campaign_stage == 2:
+            self.story_messages = [
+                {"threshold": 100, "msg": "Mizuki: Ngươi nghĩ vài trò vặt đó có thể đánh bại ta sao, Naruto?", "triggered": False},
+                {"threshold": 50, "msg": "Mizuki: Tên nhóc này... sức mạnh của hắn từ đâu ra vậy?!", "triggered": False},
+                {"threshold": 30, "msg": "Naruto: Ta sẽ không bỏ cuộc! Đó là nhẫn đạo của ta!", "triggered": False},
+                {"threshold": 10, "msg": "Mizuki: Không thể nào! Cuộn giấy phong ấn... sức mạnh của Cửu Vĩ...", "triggered": False},
+                {"threshold": 0, "msg": "Naruto: Kết thúc rồi, Mizuki!", "triggered": False}
+            ]
+        else:
+            self.story_messages = [
+                {"threshold": 130, "msg": "Demon Mizuki: Sức mạnh cấm thuật đang chảy trong ta! Chết đi, nhóc ranh!", "triggered": False},
+                {"threshold": 80, "msg": "Demon Mizuki: Cái gì? Ngươi đỡ được cấm thuật của ta sao?!", "triggered": False},
+                {"threshold": 50, "msg": "Naruto: Ta sẽ mang cuộn giấy phong ấn trở về làng Lá!", "triggered": False},
+                {"threshold": 20, "msg": "Demon Mizuki: Không... không thể nào! Ta là kẻ mạnh nhất!", "triggered": False},
+                {"threshold": 0, "msg": "Naruto: RASENSHURIKEN!!!", "triggered": False}
+            ]
 
     def apply_player_skill(self, skill_name, is_blocking, dodge_dir, dt=0.016):
         """Xử lý sát thương và hiệu ứng khi người chơi tung chiêu."""
@@ -128,20 +153,37 @@ class GameState:
         return result
 
     def apply_bot_attack(self, is_blocking, dodge_dir, is_charging=False):
-        """Xử lý Boss Mizuki ném phi tiêu tấn công tự động."""
+        """Xử lý Boss tấn công tự động dựa trên từng Stage."""
         result = {"damage_dealt": 0, "message": "", "action": None, "hit": False, "player_action": None}
         now = time.time()
         
         if self.game_over or now < self.next_bot_attack_time:
             return result
 
-        # Tính toán lần tấn công tiếp theo (Random từ 4s đến 5.5s)
-        self.next_bot_attack_time = now + random.uniform(4.0, 5.5)
-        result["action"] = "kunai"
-        
-        # Boss ném Kunai (Sát thương 5)
-        bot_damage = 5
-        
+        # Cấu hình tần suất ném và sát thương theo màn chơi
+        if self.campaign_stage == 1:
+            self.next_bot_attack_time = now + random.uniform(5.0, 6.5)
+            bot_damage = 4
+            result["action"] = "kunai"
+            msg_attack = "phi tiêu của Iruka"
+        elif self.campaign_stage == 2:
+            self.next_bot_attack_time = now + random.uniform(3.8, 5.2)
+            bot_damage = 6
+            result["action"] = "kunai"
+            msg_attack = "phi tiêu của Mizuki"
+        else:  # Stage 3
+            # Demon Mizuki ném cực dồn dập
+            self.next_bot_attack_time = now + random.uniform(2.2, 3.5)
+            # Có 40% tỷ lệ ném phi tiêu kép
+            if random.random() < 0.40:
+                bot_damage = 10
+                result["action"] = "double_kunai"
+                msg_attack = "PHI TIÊU KÉP của Demon Mizuki"
+            else:
+                bot_damage = 7
+                result["action"] = "kunai"
+                msg_attack = "phi tiêu của Demon Mizuki"
+
         # Kiểm tra người chơi có đang phòng thủ, sạc hay né không
         if is_blocking:
             # Nếu người chơi bắt đầu Block trong vòng 0.22s -> Perfect Block / Thế Thân gỗ (Kawarimi)!
@@ -149,9 +191,9 @@ class GameState:
                 result["damage_dealt"] = 0
                 result["hit"] = False
                 result["player_action"] = "kawarimi"
-                result["message"] = "🪵 THẾ THÂN CHI THUẬT! Né đòn bằng khúc gỗ thế mạng!"
-                # Choáng đối thủ: Mizuki không thể tấn công trong 3.5 giây tiếp theo!
-                self.next_bot_attack_time = now + 3.5
+                result["message"] = f"🪵 THẾ THÂN CHI THUẬT! Né hoàn toàn {msg_attack}!"
+                # Choáng đối thủ: Boss không thể tấn công trong 3.5 giây tiếp theo!
+                self.next_bot_attack_time = now + (4.0 if self.campaign_stage == 1 else 3.2 if self.campaign_stage == 2 else 2.5)
                 # Thưởng năng lượng: hồi phục +15 Chakra!
                 self.player_chakra = min(self.max_chakra, self.player_chakra + 15.0)
             else:
@@ -160,7 +202,7 @@ class GameState:
                 self.player_hp = max(0, self.player_hp - reduced)
                 result["damage_dealt"] = reduced
                 result["hit"] = True
-                result["message"] = f"🛡️ Đỡ được Kunai! Nhận {reduced} sát thương (giảm 70%)."
+                result["message"] = f"🛡️ Đỡ được đòn! Nhận {reduced} sát thương (giảm 70%)."
         elif is_charging:
             # Sạc Chakra giảm 50% sát thương, vẫn nhận 50%
             reduced = max(1, int(bot_damage * 0.5))
@@ -169,13 +211,16 @@ class GameState:
             result["hit"] = True
             result["message"] = f"⚡ Đang sạc Chakra bị ngắt quãng! Nhận {reduced} sát thương (giảm 50%)."
         elif dodge_dir:
-            result["message"] = f"🏃 Né thành công Kunai của Mizuki!"
+            result["message"] = f"🏃 Né thành công đòn đánh của đối thủ!"
         else:
             # Dính đòn toàn bộ
             self.player_hp = max(0, self.player_hp - bot_damage)
             result["damage_dealt"] = bot_damage
             result["hit"] = True
-            result["message"] = f"🔪 Dính Kunai! Bạn mất {bot_damage} máu!"
+            if result["action"] == "double_kunai":
+                result["message"] = f"🔪 Dính PHI TIÊU KÉP! Bạn mất {bot_damage} máu!"
+            else:
+                result["message"] = f"🔪 Dính phi tiêu! Bạn mất {bot_damage} máu!"
             self.bot_last_action = "throw_kunai"
 
         return result

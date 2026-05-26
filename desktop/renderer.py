@@ -48,6 +48,7 @@ class DesktopRenderer:
         self.damage_texts = []
         self.hit_flashes = []
         self.chakra_particles = []
+        self.boss_particles = []
         self.player_state = "idle"
         self.bot_state = "idle"
         self.player_state_until = 0.0
@@ -282,28 +283,63 @@ class DesktopRenderer:
         pygame.display.flip()
         self.clock.tick(60)
 
-    def draw_game_over_overlay(self, winner):
+    def draw_game_over_overlay(self, winner, stage=2, player_hp=100):
         overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 165))
+        overlay.fill((0, 0, 0, 175))
         self.screen.blit(overlay, (0, 0))
 
         if winner == "player":
             title_text = "VICTORY"
-            title_color = (255, 184, 45)  # Cam vàng hào quang Naruto
-            subtitle_text = "Mizuki has been defeated! Naruto protects the Leaf Village!"
+            title_color = (255, 184, 45)  # Cam vàng Naruto
+            
+            # Tính toán Rank
+            if player_hp >= 80: rank = "SSS"
+            elif player_hp >= 60: rank = "S"
+            elif player_hp >= 40: rank = "A"
+            else: rank = "B"
+            
+            if stage == 1:
+                subtitle_text = f"Academy Training Complete! Rank {rank}"
+                hint_text = "Press ENTER to Advance to Stage 2  |  Press ESC to Menu"
+            elif stage == 2:
+                subtitle_text = f"Forest Ambush Complete! Rank {rank}"
+                hint_text = "Press ENTER to Advance to Stage 3  |  Press ESC to Menu"
+            else:
+                subtitle_text = f"CAMPAIGN COMPLETED! Naruto protects the Leaf Village! Rank {rank}"
+                hint_text = "Press ESC to Back to Menu  |  Press R to Rematch Stage 3"
         else:
             title_text = "DEFEAT"
             title_color = (255, 72, 72)   # Đỏ thẫm nguy kịch
-            subtitle_text = "Naruto fell in battle... The Leaf Village is in danger!"
+            if stage == 1:
+                subtitle_text = "Naruto fell in training... Sensei Iruka urges you to focus!"
+            elif stage == 2:
+                subtitle_text = "Naruto fell in battle... The Leaf Village is in danger!"
+            else:
+                subtitle_text = "Naruto was defeated by Demon Mizuki... The scroll is lost!"
+            hint_text = f"Press R to Rematch Stage {stage}  |  Press ESC to Menu"
 
         title = self.title_font.render(title_text, True, title_color)
         self.screen.blit(title, title.get_rect(center=(self.width // 2, self.height // 2 - 96)))
 
-        sub = self.font.render(subtitle_text, True, (220, 220, 220))
-        self.screen.blit(sub, sub.get_rect(center=(self.width // 2, self.height // 2 - 20)))
+        if winner == "player":
+            # Hiển thị Rank to và rực rỡ
+            rank_font = pygame.font.SysFont("impact", max(50, int(80 * self.ui_scale)))
+            rank_shadow = rank_font.render(f"RANK {rank}", True, (15, 15, 15))
+            rank_text = rank_font.render(f"RANK {rank}", True, (255, 204, 34))
+            self.screen.blit(rank_shadow, rank_shadow.get_rect(center=(self.width // 2 + 3, self.height // 2 - 12)))
+            self.screen.blit(rank_text, rank_text.get_rect(center=(self.width // 2, self.height // 2 - 15)))
+            
+            sub_y = self.height // 2 + 50
+            hint_y = self.height // 2 + 100
+        else:
+            sub_y = self.height // 2 - 20
+            hint_y = self.height // 2 + 50
 
-        hint = self.small_font.render("Press R to Rematch  |  Press ESC to Menu", True, (160, 170, 190))
-        self.screen.blit(hint, hint.get_rect(center=(self.width // 2, self.height // 2 + 50)))
+        sub = self.font.render(subtitle_text, True, (220, 220, 220))
+        self.screen.blit(sub, sub.get_rect(center=(self.width // 2, sub_y)))
+
+        hint = self.small_font.render(hint_text, True, (160, 170, 190))
+        self.screen.blit(hint, hint.get_rect(center=(self.width // 2, hint_y)))
 
         pygame.display.flip()
         self.clock.tick(60)
@@ -359,6 +395,12 @@ class DesktopRenderer:
         self.avatar_mizuki = self._fit_size(
             self._load_image("frontend/assets/images/sprites/mizuki/avatar_mizuki.png"), (54, 54)
         )
+        self.avatar_iruka = self._fit_size(
+            self._load_image("frontend/assets/images/sprites/iruka/avatar_iruka.png"), (54, 54)
+        )
+        self.avatar_demon_mizuki = self._fit_size(
+            self._load_image("frontend/assets/images/sprites/mizuki/avatar_demon_mizuki.png"), (54, 54)
+        )
         if self.avatar_naruto is None:
             self.avatar_naruto = self._fit_size(
                 self._load_image("frontend/assets/images/sprites/naruto/idle.png"), (54, 54)
@@ -367,6 +409,10 @@ class DesktopRenderer:
             self.avatar_mizuki = self._fit_size(
                 self._load_image("frontend/assets/images/sprites/mizuki/idle.png"), (54, 54)
             )
+        if self.avatar_iruka is None:
+            self.avatar_iruka = self.avatar_mizuki
+        if self.avatar_demon_mizuki is None:
+            self.avatar_demon_mizuki = self.avatar_mizuki
         self.skill_icons = {
             "kage_bunshin": self._fit_size(
                 self._load_image("frontend/assets/images/ui/skill_kagebunshin.png"), (58, 58)
@@ -434,33 +480,71 @@ class DesktopRenderer:
 
     def trigger_projectile(self, kind):
         kind = (kind or "").lower()
-        if kind not in ("rasengan", "rasenshuriken", "kunai"):
+        if kind not in ("rasengan", "rasenshuriken", "kunai", "double_kunai"):
             return
         floor_y = self.scene_rect.bottom - int(55 * self.ui_scale)
-        if kind == "kunai":
+        stage = getattr(self, "campaign_stage", 2)
+        
+        # Thiết lập tốc độ ném phi tiêu của đối thủ theo từng Stage
+        if stage == 1:
+            kunai_speed = -500 * self.ui_scale
+        elif stage == 2:
+            kunai_speed = -720 * self.ui_scale
+        else:
+            kunai_speed = -950 * self.ui_scale # Demon Mizuki ném xé gió cực nhanh!
+
+        if kind in ("kunai", "double_kunai"):
             start_x = self.scene_rect.right - int(170 * self.ui_scale)
             end_x = self.scene_rect.left + int(210 * self.ui_scale)
             y = floor_y - int(115 * self.ui_scale)
-            speed = -720 * self.ui_scale
+            
+            if kind == "double_kunai":
+                self.projectiles.append({
+                    "kind": "kunai",
+                    "x": float(start_x),
+                    "y": float(y),
+                    "vx": float(kunai_speed),
+                    "target_x": float(end_x),
+                })
+                self.projectiles.append({
+                    "kind": "kunai",
+                    "x": float(start_x + 35 * self.ui_scale),
+                    "y": float(y - 24 * self.ui_scale),
+                    "vx": float(kunai_speed),
+                    "target_x": float(end_x),
+                })
+            else:
+                self.projectiles.append({
+                    "kind": "kunai",
+                    "x": float(start_x),
+                    "y": float(y),
+                    "vx": float(kunai_speed),
+                    "target_x": float(end_x),
+                })
         elif kind == "rasenshuriken":
             start_x = self.scene_rect.left + int(200 * self.ui_scale)
             end_x = self.scene_rect.right - int(230 * self.ui_scale)
             y = floor_y - int(110 * self.ui_scale)
             speed = 540 * self.ui_scale
-        else:
-            start_x = self.scene_rect.left + int(200 * self.ui_scale)
-            end_x = self.scene_rect.right - int(230 * self.ui_scale)
-            y = floor_y - int(105 * self.ui_scale)
-            speed = 670 * self.ui_scale
-        self.projectiles.append(
-            {
+            self.projectiles.append({
                 "kind": kind,
                 "x": float(start_x),
                 "y": float(y),
                 "vx": float(speed),
                 "target_x": float(end_x),
-            }
-        )
+            })
+        else: # rasengan
+            start_x = self.scene_rect.left + int(200 * self.ui_scale)
+            end_x = self.scene_rect.right - int(230 * self.ui_scale)
+            y = floor_y - int(105 * self.ui_scale)
+            speed = 670 * self.ui_scale
+            self.projectiles.append({
+                "kind": kind,
+                "x": float(start_x),
+                "y": float(y),
+                "vx": float(speed),
+                "target_x": float(end_x),
+            })
 
     def trigger_state(self, fighter, state, duration_sec=0.35):
         until = time.perf_counter() + max(0.05, duration_sec)
@@ -492,6 +576,7 @@ class DesktopRenderer:
         self.logs = self.logs[-14:]
 
     def draw(self, game_state, input_snapshot, latest_frame, dt_sec):
+        self.campaign_stage = game_state.get("campaign_stage", 2)
         self.screen.fill((18, 20, 26))
         self._draw_scene_background()
         pygame.draw.rect(self.screen, (20, 22, 30), self.hud_rect, border_radius=8)
@@ -509,7 +594,7 @@ class DesktopRenderer:
         self._draw_damage_texts()
         if game_state.get("game_over") and game_state.get("ko_cinematic"):
             self._draw_ko_cinematic(game_state.get("winner"))
-        self._draw_title()
+        self._draw_title(game_state)
         start_y = self.hud_rect.y + 12 + self.font.get_height() + int(12 * self.ui_scale)
         next_y = self._draw_hp(game_state, start_y)
         next_y = self._draw_status(input_snapshot, next_y)
@@ -659,10 +744,21 @@ class DesktopRenderer:
             if should_flip_bot:
                 m = pygame.transform.flip(m, True, False)
                 
-            # Cân chỉnh kích thước theo ui_scale
-            target_h = int(250 * self.ui_scale)
+            # Cân chỉnh kích thước theo ui_scale (Demon Mizuki to hơn)
+            if self.campaign_stage == 3:
+                target_h = int(285 * self.ui_scale)
+            else:
+                target_h = int(250 * self.ui_scale)
             target_w = int(m.get_width() * (target_h / m.get_height()))
             m = pygame.transform.smoothscale(m, (target_w, target_h))
+            
+            # Phủ sắc tím độc ác cho Demon Mizuki
+            if self.campaign_stage == 3:
+                tint = pygame.Surface(m.get_size(), pygame.SRCALPHA)
+                tint.fill((160, 60, 240, 210))  # Sắc tím tà khí
+                m_colored = m.copy()
+                m_colored.blit(tint, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+                m = m_colored
             
             pad_y = self._get_bottom_padding(m)
             pad_left, pad_right = self._get_horizontal_pads(m)
@@ -671,7 +767,31 @@ class DesktopRenderer:
             bot_margin = int(90 * self.ui_scale)
             draw_x = self.scene_rect.right - bot_margin - m.get_width() + pad_right
             draw_y = floor_y - m.get_height() + pad_y
+            
+            # Tự động sinh hạt Chakra bóng tối tím của Demon Mizuki
+            if self.campaign_stage == 3:
+                import random
+                for _ in range(random.randint(1, 2)):
+                    p_x = draw_x + m.get_width() // 2 + random.randint(int(-35 * self.ui_scale), int(35 * self.ui_scale))
+                    p_y = floor_y - random.randint(0, int(15 * self.ui_scale))
+                    p_r = random.randint(int(3 * self.ui_scale), int(7 * self.ui_scale))
+                    p_vy = -random.randint(int(70 * self.ui_scale), int(130 * self.ui_scale))
+                    self.boss_particles.append({
+                        "x": float(p_x),
+                        "y": float(p_y),
+                        "r": float(p_r),
+                        "vy": float(p_vy),
+                        "life": 1.0
+                    })
+            
             self.screen.blit(m, (draw_x + offset_x, draw_y + offset_y))
+
+            # Vẽ hạt Chakra bóng tối của Boss
+            for p in self.boss_particles:
+                alpha = max(0, min(255, int(255 * p["life"])))
+                surf = pygame.Surface((int(p["r"] * 2), int(p["r"] * 2)), pygame.SRCALPHA)
+                pygame.draw.circle(surf, (155, 38, 255, alpha), (int(p["r"]), int(p["r"])), int(p["r"]))
+                self.screen.blit(surf, (int(p["x"] - p["r"]) + offset_x, int(p["y"] - p["r"]) + offset_y))
 
     def _update_projectiles(self, dt_sec):
         for p in self.projectiles:
@@ -715,6 +835,11 @@ class DesktopRenderer:
             p["y"] += p["vy"] * dt_sec
             p["life"] -= dt_sec * 1.5
         self.chakra_particles = [p for p in self.chakra_particles if p["life"] > 0]
+
+        for p in self.boss_particles:
+            p["y"] += p["vy"] * dt_sec
+            p["life"] -= dt_sec * 1.5
+        self.boss_particles = [p for p in self.boss_particles if p["life"] > 0]
 
     def _draw_damage_texts(self):
         offset_x, offset_y = self._get_shake_offset()
@@ -780,8 +905,15 @@ class DesktopRenderer:
         self.screen.blit(ko_shadow, shadow_rect)
         self.screen.blit(ko_text, text_rect)
 
-    def _draw_title(self):
-        text = self.font.render("SHINOBI BATTLE (Desktop Local)", True, (255, 184, 45))
+    def _draw_title(self, state):
+        stage = state.get("campaign_stage", 1)
+        stage_names = {
+            1: "STAGE 1: Academy Training",
+            2: "STAGE 2: Forest Ambush",
+            3: "STAGE 3: Seal Scroll Battle"
+        }
+        stage_txt = stage_names.get(stage, "STAGE 2")
+        text = self.font.render(f"SHINOBI BATTLE ({stage_txt})", True, (255, 184, 45))
         self.screen.blit(text, (self.hud_rect.x + int(20 * self.ui_scale), self.hud_rect.y + int(12 * self.ui_scale)))
 
     def _draw_hp_bar(self, x, y, hp, color):
@@ -810,8 +942,22 @@ class DesktopRenderer:
         player_hp = state.get("player_hp", 100)
         bot_hp = state.get("bot_hp", 100)
         player_chakra = state.get("player_chakra", 50)
+        stage = state.get("campaign_stage", 2)
+        
         p = self.font.render("NARUTO", True, (230, 230, 230))
-        b = self.font.render("MIZUKI", True, (230, 230, 230))
+        
+        # Lấy nhãn tên và avatar cho đối thủ
+        if stage == 1:
+            bot_name = "IRUKA"
+            bot_avatar = self.avatar_iruka
+        elif stage == 2:
+            bot_name = "MIZUKI"
+            bot_avatar = self.avatar_mizuki
+        else:
+            bot_name = "DEMON MIZUKI"
+            bot_avatar = self.avatar_demon_mizuki
+            
+        b = self.font.render(bot_name, True, (230, 230, 230))
         x = self.hud_rect.x + int(20 * self.ui_scale)
         y = start_y
         
@@ -830,10 +976,10 @@ class DesktopRenderer:
         chakra_y = hp_y + max(14, int(24 * self.ui_scale)) + int(6 * self.ui_scale)
         self._draw_chakra_bar(x, chakra_y, player_chakra, (38, 145, 255))
         
-        # Di chuyển tới Mizuki
+        # Di chuyển tới Đối thủ
         y = chakra_y + max(10, int(18 * self.ui_scale)) + int(16 * self.ui_scale)
-        if self.avatar_mizuki is not None:
-            av_scaled = pygame.transform.smoothscale(self.avatar_mizuki, (avatar_size, avatar_size))
+        if bot_avatar is not None:
+            av_scaled = pygame.transform.smoothscale(bot_avatar, (avatar_size, avatar_size))
             self.screen.blit(av_scaled, (x, y))
         b_rect = b.get_rect(left=x + avatar_size + int(12 * self.ui_scale), centery=y + avatar_size // 2)
         self.screen.blit(b, b_rect)

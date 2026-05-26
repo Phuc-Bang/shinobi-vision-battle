@@ -228,6 +228,25 @@ def run():
                     if event.key == pygame.K_ESCAPE:
                         running = False
                         break
+                    if event.key == pygame.K_RETURN:
+                        if game.game_over and game.winner == "player":
+                            if game.campaign_stage < 3:
+                                game.campaign_stage += 1
+                                game.reset_game()
+                                game_over_triggered = False
+                                prev_player_hp = game.player_hp
+                                prev_bot_hp = game.bot_hp
+                                renderer.push_log(f"Advanced to Stage {game.campaign_stage}!")
+                            else:
+                                stop_runtime()
+                                game.campaign_stage = 1
+                                game.reset_game()
+                                game_over_triggered = False
+                                prev_player_hp = game.player_hp
+                                prev_bot_hp = game.bot_hp
+                                in_menu = True
+                                renderer.push_log("Campaign completed! Returned to menu.")
+                        continue
                     if event.key == pygame.K_r:
                         game.reset_game()
                         game_over_triggered = False
@@ -294,6 +313,7 @@ def run():
                         renderer.push_log("Game reset.")
                     elif btn["menu"].collidepoint(event.pos):
                         stop_runtime()
+                        game.campaign_stage = 1
                         game.reset_game()
                         game_over_triggered = False
                         prev_player_hp = game.player_hp
@@ -414,11 +434,12 @@ def run():
                     "game_over": game.game_over,
                     "winner": game.winner,
                     "ko_cinematic": ko_cinematic_active,
+                    "campaign_stage": game.campaign_stage,
                 }
                 renderer.draw(current_state, render_snapshot, frame, dt_sec)
                 
                 if now >= game_over_show_overlay_at:
-                    renderer.draw_game_over_overlay(game.winner)
+                    renderer.draw_game_over_overlay(game.winner, stage=game.campaign_stage, player_hp=game.player_hp)
                 
                 continue
 
@@ -446,7 +467,7 @@ def run():
                     renderer.trigger_state("player", "kawarimi", 0.6)
                     renderer.trigger_shake(12.0, 0.3)
                 
-                if bot_action == "kunai":
+                if bot_action in ("kunai", "double_kunai"):
                     renderer.trigger_state("bot", "attack", 0.34)
                     renderer.trigger_projectile(bot_action)
                 last_event_id = event_id
