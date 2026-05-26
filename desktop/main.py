@@ -158,8 +158,16 @@ def run():
         )
         input_state = InputState()
         ai_worker = AIWorker(camera, input_state, ai_fps=ai_fps)
-        camera.start()
-        ai_worker.start()
+        try:
+            camera.start()
+            if camera._cap is not None:
+                ai_worker.start()
+                renderer.push_log("Camera started successfully.")
+            else:
+                renderer.push_log("WARNING: Camera not found. KEYBOARD PLAY MODE.")
+        except Exception as e:
+            renderer.push_log(f"WARNING: Camera error ({e}). KEYBOARD PLAY MODE.")
+            
         ai_started = True
         last_tick = time.perf_counter()
         current_preview_fps = preview_fps
@@ -169,9 +177,15 @@ def run():
     def stop_runtime():
         nonlocal ai_started, camera, ai_worker
         if ai_started and ai_worker is not None:
-            ai_worker.stop()
+            try:
+                ai_worker.stop()
+            except Exception:
+                pass
         if camera is not None:
-            camera.stop()
+            try:
+                camera.stop()
+            except Exception:
+                pass
         ai_worker = None
         camera = None
         ai_started = False
@@ -226,8 +240,20 @@ def run():
                             renderer.push_log("Keyboard test: 1/2/3 B A/D R H P ESC")
                         continue
                     if event.key == pygame.K_ESCAPE:
-                        running = False
-                        break
+                        if game.game_over:
+                            stop_runtime()
+                            game.campaign_stage = 1
+                            game.reset_game()
+                            game_over_triggered = False
+                            prev_player_hp = game.player_hp
+                            prev_bot_hp = game.bot_hp
+                            paused = False
+                            in_menu = True
+                            renderer.push_log("Back to menu.")
+                            continue
+                        else:
+                            running = False
+                            break
                     if event.key == pygame.K_RETURN:
                         if game.game_over and game.winner == "player":
                             if game.campaign_stage < 3:

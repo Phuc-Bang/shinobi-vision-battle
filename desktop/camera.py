@@ -25,12 +25,19 @@ class CameraStream:
         if self._thread and self._thread.is_alive():
             return
         self._stop.clear()
-        if os.name == "nt":
-            self._cap = cv2.VideoCapture(self.index, cv2.CAP_DSHOW)
-        else:
-            self._cap = cv2.VideoCapture(self.index)
-        if not self._cap.isOpened():
-            raise RuntimeError(f"Cannot open camera index={self.index}")
+        try:
+            if os.name == "nt":
+                self._cap = cv2.VideoCapture(self.index, cv2.CAP_DSHOW)
+            else:
+                self._cap = cv2.VideoCapture(self.index)
+            if not self._cap.isOpened():
+                self._cap = None
+        except Exception:
+            self._cap = None
+
+        if self._cap is None:
+            return
+
         self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         self._cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
         self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)

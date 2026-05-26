@@ -899,7 +899,8 @@ class DesktopRenderer:
         center_y = self.scene_rect.y + self.scene_rect.height // 2
         
         offset_x, offset_y = self._get_shake_offset()
-        shadow_rect = ko_shadow.get_rect(center=(center_x + 4 + offset_x, center_y + 4 + offset_y))
+        shadow_off = max(1, int(4 * self.ui_scale))
+        shadow_rect = ko_shadow.get_rect(center=(center_x + shadow_off + offset_x, center_y + shadow_off + offset_y))
         text_rect = ko_text.get_rect(center=(center_x + offset_x, center_y + offset_y))
         
         self.screen.blit(ko_shadow, shadow_rect)
@@ -916,14 +917,14 @@ class DesktopRenderer:
         text = self.font.render(f"SHINOBI BATTLE ({stage_txt})", True, (255, 184, 45))
         self.screen.blit(text, (self.hud_rect.x + int(20 * self.ui_scale), self.hud_rect.y + int(12 * self.ui_scale)))
 
-    def _draw_hp_bar(self, x, y, hp, color):
-        hp = max(0, min(100, int(hp)))
+    def _draw_hp_bar(self, x, y, hp, max_hp, color):
+        hp = max(0, min(max_hp, int(hp)))
         bar_w = self.hud_rect.width - int(40 * self.ui_scale)
         bar_h = max(14, int(24 * self.ui_scale))
         pygame.draw.rect(self.screen, (58, 58, 58), (x, y, bar_w, bar_h), border_radius=int(bar_h // 2))
         if hp > 0:
-            pygame.draw.rect(self.screen, color, (x, y, int(bar_w * hp / 100), bar_h), border_radius=int(bar_h // 2))
-        txt = self.small_font.render(f"{hp}/100", True, (240, 240, 240))
+            pygame.draw.rect(self.screen, color, (x, y, int(bar_w * hp / max_hp), bar_h), border_radius=int(bar_h // 2))
+        txt = self.small_font.render(f"{hp}/{max_hp}", True, (240, 240, 240))
         txt_rect = txt.get_rect(center=(x + bar_w // 2, y + bar_h // 2))
         self.screen.blit(txt, txt_rect)
 
@@ -950,12 +951,15 @@ class DesktopRenderer:
         if stage == 1:
             bot_name = "IRUKA"
             bot_avatar = self.avatar_iruka
+            bot_max_hp = 80
         elif stage == 2:
             bot_name = "MIZUKI"
             bot_avatar = self.avatar_mizuki
+            bot_max_hp = 100
         else:
             bot_name = "DEMON MIZUKI"
             bot_avatar = self.avatar_demon_mizuki
+            bot_max_hp = 130
             
         b = self.font.render(bot_name, True, (230, 230, 230))
         x = self.hud_rect.x + int(20 * self.ui_scale)
@@ -971,7 +975,7 @@ class DesktopRenderer:
         self.screen.blit(p, p_rect)
         
         hp_y = y + avatar_size + int(8 * self.ui_scale)
-        self._draw_hp_bar(x, hp_y, player_hp, (52, 245, 36))
+        self._draw_hp_bar(x, hp_y, player_hp, 100, (52, 245, 36))
         
         chakra_y = hp_y + max(14, int(24 * self.ui_scale)) + int(6 * self.ui_scale)
         self._draw_chakra_bar(x, chakra_y, player_chakra, (38, 145, 255))
@@ -985,7 +989,7 @@ class DesktopRenderer:
         self.screen.blit(b, b_rect)
         
         hp_y_bot = y + avatar_size + int(8 * self.ui_scale)
-        self._draw_hp_bar(x, hp_y_bot, bot_hp, (255, 48, 88))
+        self._draw_hp_bar(x, hp_y_bot, bot_hp, bot_max_hp, (255, 48, 88))
         
         # Di chuyển tới Skill Icons
         skills_start_y = hp_y_bot + max(14, int(24 * self.ui_scale)) + int(20 * self.ui_scale)
@@ -1159,16 +1163,16 @@ class DesktopRenderer:
 
     def _draw_preview(self, frame, landmarks):
         title = self.font.render("CAM PREVIEW", True, (255, 184, 45))
-        self.screen.blit(title, (self.preview_rect.x + 12, self.preview_rect.y + 10))
+        self.screen.blit(title, (self.preview_rect.x + int(12 * self.ui_scale), self.preview_rect.y + int(10 * self.ui_scale)))
         content_rect = pygame.Rect(
-            self.preview_rect.x + 8,
-            self.preview_rect.y + 36,
-            self.preview_rect.width - 16,
-            self.preview_rect.height - 44,
+            self.preview_rect.x + int(8 * self.ui_scale),
+            self.preview_rect.y + int(36 * self.ui_scale),
+            self.preview_rect.width - int(16 * self.ui_scale),
+            self.preview_rect.height - int(44 * self.ui_scale),
         )
         if frame is None and self._preview_surface is None:
             t = self.small_font.render("No camera frame", True, (220, 120, 120))
-            self.screen.blit(t, (content_rect.x + 8, content_rect.y + 8))
+            self.screen.blit(t, (content_rect.x + int(8 * self.ui_scale), content_rect.y + int(8 * self.ui_scale)))
             return
 
         now = time.perf_counter()
@@ -1192,6 +1196,9 @@ class DesktopRenderer:
         pose = landmarks.get("pose") or []
         hands = landmarks.get("hands") or []
 
+        line_w = max(1, int(2 * self.ui_scale))
+        pt_r = max(1, int(3 * self.ui_scale))
+
         for a, b in POSE_CONNECTIONS:
             if a < len(pose) and b < len(pose):
                 x1, y1 = pose[a]
@@ -1201,14 +1208,14 @@ class DesktopRenderer:
                     (70, 255, 90),
                     (int(px + x1 * pw), int(py + y1 * ph)),
                     (int(px + x2 * pw), int(py + y2 * ph)),
-                    2,
+                    line_w,
                 )
         for pt in pose:
             pygame.draw.circle(
                 self.screen,
                 (70, 255, 90),
                 (int(px + pt[0] * pw), int(py + pt[1] * ph)),
-                3,
+                pt_r,
             )
 
         for hand in hands:
@@ -1221,12 +1228,12 @@ class DesktopRenderer:
                         (255, 166, 42),
                         (int(px + x1 * pw), int(py + y1 * ph)),
                         (int(px + x2 * pw), int(py + y2 * ph)),
-                        2,
+                        line_w,
                     )
             for pt in hand:
                 pygame.draw.circle(
                     self.screen,
                     (255, 166, 42),
                     (int(px + pt[0] * pw), int(py + pt[1] * ph)),
-                    3,
+                    pt_r,
                 )
