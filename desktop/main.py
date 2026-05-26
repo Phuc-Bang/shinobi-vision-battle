@@ -78,6 +78,8 @@ def map_manual_key_to_action(event):
         return {"skill": "rasengan"}
     if key == pygame.K_3:
         return {"skill": "rasenshuriken"}
+    if key == pygame.K_4:
+        return {"skill": "charge_chakra"}
     if key == pygame.K_b:
         return {"block": True}
     if key == pygame.K_a:
@@ -355,6 +357,18 @@ def run():
             block = snapshot.get("block", False)
             dodge = snapshot.get("dodge")
 
+            # Đọc phím giữ sạc Chakra (Phím 4) hoặc áp dụng đè phím thủ công khác
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_4]:
+                skill = "charge_chakra"
+            elif manual_action:
+                if "skill" in manual_action:
+                    skill = manual_action["skill"]
+                if "block" in manual_action:
+                    block = manual_action["block"]
+                if "dodge" in manual_action:
+                    dodge = manual_action["dodge"]
+
             if game.game_over:
                 if not game_over_triggered:
                     game_over_triggered = True
@@ -416,6 +430,8 @@ def run():
                     renderer.trigger_projectile(player_action)
                 elif player_action == "kage_bunshin":
                     renderer.trigger_state("player", "kage_bunshin", 0.55)
+                elif player_action == "charge_chakra":
+                    renderer.trigger_state("player", "charge", 0.15)
                 if bot_action == "kunai":
                     renderer.trigger_state("bot", "attack", 0.34)
                     renderer.trigger_projectile(bot_action)

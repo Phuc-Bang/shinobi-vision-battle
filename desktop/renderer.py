@@ -47,6 +47,7 @@ class DesktopRenderer:
         self.projectiles = []
         self.damage_texts = []
         self.hit_flashes = []
+        self.chakra_particles = []
         self.player_state = "idle"
         self.bot_state = "idle"
         self.player_state_until = 0.0
@@ -563,6 +564,8 @@ class DesktopRenderer:
             n = self.naruto_kage
         elif self.player_state == "block" and self.naruto_block is not None:
             n = self.naruto_block
+        elif self.player_state == "charge" and self.naruto_block is not None:
+            n = self.naruto_block
         elif self.player_state == "dodge_left" and self.naruto_dodge_left is not None:
             n = self.naruto_dodge_left
         elif self.player_state == "dodge_right" and self.naruto_dodge_right is not None:
@@ -573,9 +576,9 @@ class DesktopRenderer:
             n = self.naruto_hurt
             
         # Naruto (bên trái) luôn cần hướng sang PHẢI:
-        # Lật ngang các trạng thái có ảnh gốc hướng trái: idle, kage_bunshin, block, rasenshuriken
+        # Lật ngang các trạng thái có ảnh gốc hướng trái: idle, kage_bunshin, block, rasenshuriken, charge
         # Giữ nguyên các trạng thái có ảnh gốc hướng phải: dead, dodge_left, dodge_right, attack, hurt
-        should_flip_player = self.player_state in ("idle", "kage_bunshin", "block", "rasenshuriken")
+        should_flip_player = self.player_state in ("idle", "kage_bunshin", "block", "rasenshuriken", "charge")
         if n is not None:
             if should_flip_player:
                 n = pygame.transform.flip(n, True, False)
@@ -593,7 +596,33 @@ class DesktopRenderer:
             player_margin = int(90 * self.ui_scale)
             draw_x = self.scene_rect.left + player_margin - pad_left
             draw_y = floor_y - n.get_height() + pad_y
+            
+            # Sinh hạt Chakra xanh dương tại chân Naruto khi đang sạc
+            if self.player_state == "charge":
+                import random
+                for _ in range(random.randint(1, 3)):
+                    p_x = draw_x + n.get_width() // 2 + random.randint(int(-35 * self.ui_scale), int(35 * self.ui_scale))
+                    p_y = floor_y - random.randint(0, int(15 * self.ui_scale))
+                    p_r = random.randint(int(3 * self.ui_scale), int(7 * self.ui_scale))
+                    p_vy = -random.randint(int(100 * self.ui_scale), int(180 * self.ui_scale))
+                    self.chakra_particles.append({
+                        "x": float(p_x),
+                        "y": float(p_y),
+                        "r": float(p_r),
+                        "vy": float(p_vy),
+                        "life": 1.0
+                    })
+            
+            # Vẽ các hạt Chakra trước khi vẽ nhân vật (hiệu ứng nền) hoặc sau nhân vật?
+            # Vẽ đằng trước nhân vật để hạt bao quanh người!
             self.screen.blit(n, (draw_x, draw_y))
+
+            # Vẽ các hạt Chakra (độ trong suốt qua SURFACE ALPHA)
+            for p in self.chakra_particles:
+                alpha = max(0, min(255, int(255 * p["life"])))
+                surf = pygame.Surface((int(p["r"] * 2), int(p["r"] * 2)), pygame.SRCALPHA)
+                pygame.draw.circle(surf, (38, 145, 255, alpha), (int(p["r"]), int(p["r"])), int(p["r"]))
+                self.screen.blit(surf, (int(p["x"] - p["r"]), int(p["y"] - p["r"])))
             
         m = self.mizuki_idle
         if self.bot_state == "dead" and self.mizuki_dead is not None:
@@ -657,6 +686,11 @@ class DesktopRenderer:
             f["life"] -= dt_sec
         self.hit_flashes = [f for f in self.hit_flashes if f["life"] > 0]
 
+        for p in self.chakra_particles:
+            p["y"] += p["vy"] * dt_sec
+            p["life"] -= dt_sec * 1.5
+        self.chakra_particles = [p for p in self.chakra_particles if p["life"] > 0]
+
     def _draw_damage_texts(self):
         for d in self.damage_texts:
             alpha = max(0, min(255, int(255 * d["life"])))
@@ -689,9 +723,17 @@ class DesktopRenderer:
         txt = self.small_font.render(f"{hp}/100", True, (240, 240, 240))
         self.screen.blit(txt, (x + 130, y + 3))
 
+    def _draw_chakra_bar(self, x, y, chakra, color):
+        chakra = max(0, min(100, int(chakra)))
+        pygame.draw.rect(self.screen, (58, 58, 58), (x, y, 300, 14), border_radius=7)
+        pygame.draw.rect(self.screen, color, (x, y, int(300 * chakra / 100), 14), border_radius=7)
+        txt = self.small_font.render(f"Chakra: {chakra}/100", True, (240, 240, 240))
+        self.screen.blit(txt, (x + 95, y - 2))
+
     def _draw_hp(self, state):
         player_hp = state.get("player_hp", 100)
         bot_hp = state.get("bot_hp", 100)
+        player_chakra = state.get("player_chakra", 50)
         p = self.font.render("NARUTO", True, (230, 230, 230))
         b = self.font.render("MIZUKI", True, (230, 230, 230))
         x = self.hud_rect.x + 20
@@ -699,11 +741,12 @@ class DesktopRenderer:
         if self.avatar_naruto is not None:
             self.screen.blit(self.avatar_naruto, (x, y))
         if self.avatar_mizuki is not None:
-            self.screen.blit(self.avatar_mizuki, (x, y + int(80 * self.ui_scale)))
+            self.screen.blit(self.avatar_mizuki, (x, y + int(112 * self.ui_scale)))
         self.screen.blit(p, (x + int(66 * self.ui_scale), y + int(12 * self.ui_scale)))
         self._draw_hp_bar(x, y + int(44 * self.ui_scale), player_hp, (52, 245, 36))
-        self.screen.blit(b, (x + int(66 * self.ui_scale), y + int(92 * self.ui_scale)))
-        self._draw_hp_bar(x, y + int(124 * self.ui_scale), bot_hp, (255, 48, 88))
+        self._draw_chakra_bar(x, y + int(76 * self.ui_scale), player_chakra, (38, 145, 255))
+        self.screen.blit(b, (x + int(66 * self.ui_scale), y + int(124 * self.ui_scale)))
+        self._draw_hp_bar(x, y + int(156 * self.ui_scale), bot_hp, (255, 48, 88))
         self._draw_skill_icons(state)
 
     def _draw_skill_icons(self, state):

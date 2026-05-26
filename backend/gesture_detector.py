@@ -53,6 +53,7 @@ class GestureDetector:
         self.dodge_threshold = self._env_float("DODGE_SHOULDER_DIFF", stability["dodge_threshold"])
         self.block_wrist_dist = self._env_float("BLOCK_WRIST_DIST", stability["block_wrist_dist"])
         self.kage_wrist_dist = self._env_float("KAGE_WRIST_DIST", stability["kage_wrist_dist"])
+        self.charge_wrist_dist = self._env_float("CHARGE_WRIST_DIST", stability["charge_wrist_dist"])
         self.action_confirm_frames = self._env_int("ACTION_CONFIRM_FRAMES", stability["action_confirm_frames"])
         self.skill_repeat_cooldown_frames = self._env_int(
             "SKILL_REPEAT_COOLDOWN_FRAMES", stability["skill_repeat_cooldown_frames"]
@@ -71,6 +72,7 @@ class GestureDetector:
             "kage_bunshin": 0,
             "rasenshuriken": 0,
             "rasengan": 0,
+            "charge_chakra": 0,
         }
         
         self._check_models()
@@ -111,6 +113,7 @@ class GestureDetector:
                 "dodge_threshold": 0.065,
                 "block_wrist_dist": 0.145,
                 "kage_wrist_dist": 0.135,
+                "charge_wrist_dist": 0.095,
                 "action_confirm_frames": 1,
                 "skill_repeat_cooldown_frames": 6,
                 "skill_release_frames": 5,
@@ -125,6 +128,7 @@ class GestureDetector:
                 "dodge_threshold": 0.07,
                 "block_wrist_dist": 0.14,
                 "kage_wrist_dist": 0.13,
+                "charge_wrist_dist": 0.09,
                 "action_confirm_frames": 2,
                 "skill_repeat_cooldown_frames": 8,
                 "skill_release_frames": 8,
@@ -139,6 +143,7 @@ class GestureDetector:
                 "dodge_threshold": 0.08,
                 "block_wrist_dist": 0.13,
                 "kage_wrist_dist": 0.12,
+                "charge_wrist_dist": 0.085,
                 "action_confirm_frames": 3,
                 "skill_repeat_cooldown_frames": 12,
                 "skill_release_frames": 10,
@@ -291,6 +296,7 @@ class GestureDetector:
         dynamic_dodge_threshold = self.dodge_threshold * scale_factor
         dynamic_block_wrist_dist = self.block_wrist_dist * scale_factor
         dynamic_kage_wrist_dist = self.kage_wrist_dist * scale_factor
+        dynamic_charge_wrist_dist = self.charge_wrist_dist * scale_factor
         
         # --- DODGE: chỉ phát hiện khi thân người nghiêng rõ ---
         if self.confirm_action("dodge_left", l_sh_y > r_sh_y + dynamic_dodge_threshold):
@@ -302,13 +308,19 @@ class GestureDetector:
 
         dist_wrists = math.sqrt((l_wr_x - r_wr_x) ** 2 + (l_wr_y - r_wr_y) ** 2)
 
-        # --- BLOCK & SKILL: bỏ qua khi đang dodge để tránh xung đột ---
+        # --- BLOCK, CHARGE & SKILL: bỏ qua khi đang dodge để tránh xung đột ---
         if not result["dodge"]:
             block_condition = (
                 dist_wrists < dynamic_block_wrist_dist and l_wr_y < nose_y and r_wr_y < nose_y
             )
+            charge_condition = (
+                dist_wrists < dynamic_charge_wrist_dist and nose_y < l_wr_y < l_sh_y + 0.06 * scale_factor
+            )
+
             if self.confirm_action("block", block_condition):
                 result["block"], result["message"] = True, "🛡️ ĐANG ĐỠ ĐÒN!"
+            elif self.confirm_action("charge_chakra", charge_condition):
+                result["skill"], result["message"] = "charge_chakra", "⚡ ĐANG SẠC CHAKRA! ⚡"
 
             # Dùng handedness của MediaPipe thay vì x-position (chính xác hơn khi tay bắt chéo)
             is_r_open = self.last_hand_state["right_open"]
@@ -334,8 +346,9 @@ class GestureDetector:
                     self.last_hand_state["left_open"] = False
                     self.last_hand_landmarks = []
 
-            # Block được ưu tiên hơn skill để một frame không vừa đỡ vừa tung chiêu.
-            if not result["block"]:
+            # Block và Charge được ưu tiên hơn các skill tấn công khác
+            if not result["block"] and result["skill"] != "charge_chakra":
+                self.action_counters["charge_chakra"] = 0
                 left_hand_up = l_wr_y < l_sh_y
                 right_hand_up = r_wr_y < r_sh_y
                 kage_cond = dist_wrists < dynamic_kage_wrist_dist and l_sh_y < l_wr_y < l_hip_y
@@ -360,12 +373,19 @@ class GestureDetector:
                     result["skill"], result["message"] = "rasenshuriken", "🌪️ RASENSHURIKEN!"
                 elif rasengan_ok:
                     result["skill"], result["message"] = "rasengan", "🌀 RASENGAN!"
-            else:
+            elif result["block"]:
+                self.action_counters["charge_chakra"] = 0
+                self.action_counters["kage_bunshin"] = 0
+                self.action_counters["rasenshuriken"] = 0
+                self.action_counters["rasengan"] = 0
+            else: # charge_chakra
+                self.action_counters["block"] = 0
                 self.action_counters["kage_bunshin"] = 0
                 self.action_counters["rasenshuriken"] = 0
                 self.action_counters["rasengan"] = 0
         else:
             self.action_counters["block"] = 0
+            self.action_counters["charge_chakra"] = 0
             self.action_counters["kage_bunshin"] = 0
             self.action_counters["rasenshuriken"] = 0
             self.action_counters["rasengan"] = 0
