@@ -59,11 +59,14 @@ class DesktopRenderer:
         self.shake_timer = 0.0
         self.shake_duration = 0.0
         self.shake_intensity = 0.0
-        self._load_assets()
-        self._status_bottom_y = self.hud_rect.y + 560
+        self.selected_char = "naruto"
+        self._menu_char_naruto_rect = pygame.Rect(0, 0, 0, 0)
+        self._menu_char_sasuke_rect = pygame.Rect(0, 0, 0, 0)
         self._menu_start_rect = None
         self._menu_quit_rect = None
         self._menu_controls = None
+        self._load_assets()
+        self._status_bottom_y = self.hud_rect.y + 560
         self.resize(width, height)
 
     def resize(self, width, height):
@@ -155,7 +158,8 @@ class DesktopRenderer:
         }
         return {"panel": panel, "start_rect": start_rect, "quit_rect": quit_rect, "controls": controls}
 
-    def draw_menu(self, performance_preset, camera_label, camera_index, mirror_on, stage=1):
+    def draw_menu(self, performance_preset, camera_label, camera_index, mirror_on, stage=1, selected_char="naruto"):
+        self.selected_char = selected_char
         self.screen.fill((18, 20, 26))
         if self.bg is not None:
             bg = pygame.transform.smoothscale(self.bg, (self.width, self.height))
@@ -199,9 +203,10 @@ class DesktopRenderer:
             bot_avatar = self.avatar_demon_mizuki
             desc = "Scroll Battle - Stop Demon Mizuki's dark fury!"
 
-        if self.avatar_naruto is not None:
+        player_avatar = self.avatar_sasuke if self.selected_char == "sasuke" else self.avatar_naruto
+        if player_avatar is not None:
             av = int(110 * self.ui_scale)
-            avatar = pygame.transform.smoothscale(self.avatar_naruto, (av, av))
+            avatar = pygame.transform.smoothscale(player_avatar, (av, av))
             self.screen.blit(avatar, (panel.centerx - int(168 * self.ui_scale), panel.y + int(180 * self.ui_scale)))
         
         if bot_avatar is not None:
@@ -218,10 +223,54 @@ class DesktopRenderer:
         versus = self.pause_title_font.render("VS", True, (255, 72, 72))
         self.screen.blit(versus, versus.get_rect(center=(self.width // 2, panel.y + int(246 * self.ui_scale))))
 
-        p1 = self.font.render("NARUTO", True, (245, 245, 245))
+        # Character selection buttons
+        btn_y = panel.y + int(298 * self.ui_scale)
+        btn_w = int(76 * self.ui_scale)
+        btn_h = int(24 * self.ui_scale)
+        
+        self._menu_char_naruto_rect = pygame.Rect(
+            panel.centerx - int(192 * self.ui_scale), btn_y, btn_w, btn_h
+        )
+        self._menu_char_sasuke_rect = pygame.Rect(
+            panel.centerx - int(110 * self.ui_scale), btn_y, btn_w, btn_h
+        )
+
+        mouse = pygame.mouse.get_pos()
+        
+        # Naruto Button
+        is_hover_naruto = self._menu_char_naruto_rect.collidepoint(mouse)
+        if self.selected_char == "naruto":
+            naruto_color = (255, 120, 0)
+            border_w = 2
+        else:
+            naruto_color = (120, 80, 50) if is_hover_naruto else (50, 40, 35)
+            border_w = 1
+            
+        pygame.draw.rect(self.screen, naruto_color, self._menu_char_naruto_rect, border_radius=4)
+        if self.selected_char == "naruto" or is_hover_naruto:
+            pygame.draw.rect(self.screen, (255, 200, 100), self._menu_char_naruto_rect, width=border_w, border_radius=4)
+        
+        # Sasuke Button
+        is_hover_sasuke = self._menu_char_sasuke_rect.collidepoint(mouse)
+        if self.selected_char == "sasuke":
+            sasuke_color = (90, 70, 200)
+            border_w = 2
+        else:
+            sasuke_color = (60, 50, 100) if is_hover_sasuke else (30, 25, 45)
+            border_w = 1
+            
+        pygame.draw.rect(self.screen, sasuke_color, self._menu_char_sasuke_rect, border_radius=4)
+        if self.selected_char == "sasuke" or is_hover_sasuke:
+            pygame.draw.rect(self.screen, (150, 150, 255), self._menu_char_sasuke_rect, width=border_w, border_radius=4)
+            
+        lbl_naruto = self.small_font.render("NARUTO", True, (255, 255, 255))
+        self.screen.blit(lbl_naruto, lbl_naruto.get_rect(center=self._menu_char_naruto_rect.center))
+        
+        lbl_sasuke = self.small_font.render("SASUKE", True, (255, 255, 255))
+        self.screen.blit(lbl_sasuke, lbl_sasuke.get_rect(center=self._menu_char_sasuke_rect.center))
+
         p2 = self.font.render(bot_name, True, (245, 245, 245))
-        self.screen.blit(p1, p1.get_rect(center=(panel.centerx - int(120 * self.ui_scale), panel.y + int(305 * self.ui_scale))))
-        self.screen.blit(p2, p2.get_rect(center=(panel.centerx + int(120 * self.ui_scale), panel.y + int(305 * self.ui_scale))))
+        self.screen.blit(p2, p2.get_rect(center=(panel.centerx + int(120 * self.ui_scale), panel.y + int(310 * self.ui_scale))))
 
         desc_font = pygame.font.SysFont("consolas", max(11, int(14 * self.ui_scale)), italic=True)
         desc_t = desc_font.render(f"STAGE {stage}: {desc}", True, (255, 184, 45))
@@ -506,6 +555,100 @@ class DesktopRenderer:
             self._load_image("frontend/assets/images/sprites/naruto/kawarimi_log.png"), 150
         )
 
+        # Load Sasuke Assets
+        self.avatar_sasuke = self._fit_size(
+            self._load_image("frontend/assets/images/sprites/sasuke/avatar_sasuke.png"), (54, 54)
+        )
+        if self.avatar_sasuke is None:
+            self.avatar_sasuke = self._fit_size(
+                self._load_image("frontend/assets/images/sprites/sasuke/idle.png"), (54, 54)
+            )
+        if self.avatar_sasuke is None:
+            self.avatar_sasuke = self.avatar_naruto
+
+        self.sasuke_idle = self._fit_height(
+            self._load_image("frontend/assets/images/sprites/sasuke/idle.png"), 250
+        )
+        if self.sasuke_idle is None:
+            self.sasuke_idle = self.naruto_idle
+
+        self.sasuke_attack = self._fit_height(
+            self._load_image("frontend/assets/images/sprites/sasuke/chidori.png"), 250
+        )
+        if self.sasuke_attack is None:
+            self.sasuke_attack = self.naruto_attack
+
+        self.sasuke_rasenshuriken = self._fit_height(
+            self._load_image("frontend/assets/images/sprites/sasuke/katon.png"), 250
+        )
+        if self.sasuke_rasenshuriken is None:
+            self.sasuke_rasenshuriken = self.naruto_rasenshuriken
+
+        self.sasuke_kage = self._fit_height(
+            self._load_image("frontend/assets/images/sprites/sasuke/sharingan.png"), 250
+        )
+        if self.sasuke_kage is None:
+            self.sasuke_kage = self.naruto_kage
+
+        self.sasuke_block = self._fit_height(
+            self._load_image("frontend/assets/images/sprites/sasuke/block.png"), 250
+        )
+        if self.sasuke_block is None:
+            self.sasuke_block = self.naruto_block
+
+        self.sasuke_dodge_left = self._fit_height(
+            self._load_image("frontend/assets/images/sprites/sasuke/dodge_left.png"), 250
+        )
+        if self.sasuke_dodge_left is None:
+            self.sasuke_dodge_left = self.naruto_dodge_left
+
+        self.sasuke_dodge_right = self._fit_height(
+            self._load_image("frontend/assets/images/sprites/sasuke/dodge_right.png"), 250
+        )
+        if self.sasuke_dodge_right is None:
+            self.sasuke_dodge_right = self.naruto_dodge_right
+
+        self.sasuke_hurt = self._fit_height(
+            self._load_image("frontend/assets/images/sprites/sasuke/hurt.png"), 250
+        )
+        if self.sasuke_hurt is None:
+            self.sasuke_hurt = self.naruto_hurt
+
+        self.sasuke_dead = self._fit_height(
+            self._load_image("frontend/assets/images/sprites/sasuke/dead.png"), 250
+        )
+        if self.sasuke_dead is None:
+            self.sasuke_dead = self.naruto_dead
+
+        self.sasuke_proj_images = {
+            "rasengan": self._fit_height(
+                self._load_image("frontend/assets/images/projectiles/chidori.png"), 74
+            ),
+            "rasenshuriken": self._fit_height(
+                self._load_image("frontend/assets/images/projectiles/katon.png"), 88
+            ),
+        }
+        if self.sasuke_proj_images["rasengan"] is None:
+            self.sasuke_proj_images["rasengan"] = self.proj_images["rasengan"]
+        if self.sasuke_proj_images["rasenshuriken"] is None:
+            self.sasuke_proj_images["rasenshuriken"] = self.proj_images["rasenshuriken"]
+
+        self.sasuke_skill_icons = {
+            "kage_bunshin": self._fit_size(
+                self._load_image("frontend/assets/images/ui/skill_sharingan.png"), (58, 58)
+            ),
+            "rasengan": self._fit_size(
+                self._load_image("frontend/assets/images/ui/skill_chidori.png"), (58, 58)
+            ),
+            "rasenshuriken": self._fit_size(
+                self._load_image("frontend/assets/images/ui/skill_katon.png"), (58, 58)
+            ),
+        }
+        for k in ["kage_bunshin", "rasengan", "rasenshuriken"]:
+            if self.sasuke_skill_icons[k] is None:
+                self.sasuke_skill_icons[k] = self.skill_icons[k]
+
+
     def trigger_projectile(self, kind):
         kind = (kind or "").lower()
         if kind not in ("rasengan", "rasenshuriken", "kunai", "double_kunai"):
@@ -610,6 +753,7 @@ class DesktopRenderer:
 
     def draw(self, game_state, input_snapshot, latest_frame, dt_sec):
         self.campaign_stage = game_state.get("campaign_stage", 2)
+        self.selected_char = game_state.get("selected_char", "naruto")
         self.screen.fill((18, 20, 26))
         self._draw_scene_background(dt_sec)
         pygame.draw.rect(self.screen, (20, 22, 30), self.hud_rect, border_radius=8)
@@ -805,27 +949,51 @@ class DesktopRenderer:
     def _draw_fighters(self):
         offset_x, offset_y = self._get_shake_offset()
         floor_y = self.scene_rect.bottom - int(55 * self.ui_scale)
-        n = self.naruto_idle
-        if self.player_state == "dead" and self.naruto_dead is not None:
-            n = self.naruto_dead
-        elif self.player_state == "rasenshuriken" and self.naruto_rasenshuriken is not None:
-            n = self.naruto_rasenshuriken
-        elif self.player_state == "kage_bunshin" and self.naruto_kage is not None:
-            n = self.naruto_kage
-        elif self.player_state == "block" and self.naruto_block is not None:
-            n = self.naruto_block
-        elif self.player_state == "charge" and self.naruto_block is not None:
-            n = self.naruto_block
-        elif self.player_state == "dodge_left" and self.naruto_dodge_left is not None:
-            n = self.naruto_dodge_left
-        elif self.player_state == "dodge_right" and self.naruto_dodge_right is not None:
-            n = self.naruto_dodge_right
-        elif self.player_state == "attack" and self.naruto_attack is not None:
-            n = self.naruto_attack
-        elif self.player_state == "hurt" and self.naruto_hurt is not None:
-            n = self.naruto_hurt
-        elif self.player_state == "kawarimi" and self.kawarimi_log is not None:
-            n = self.kawarimi_log
+        selected_char = getattr(self, "selected_char", "naruto")
+        if selected_char == "sasuke":
+            n = self.sasuke_idle
+            if self.player_state == "dead" and self.sasuke_dead is not None:
+                n = self.sasuke_dead
+            elif self.player_state == "rasenshuriken" and self.sasuke_rasenshuriken is not None:
+                n = self.sasuke_rasenshuriken
+            elif self.player_state == "kage_bunshin" and self.sasuke_kage is not None:
+                n = self.sasuke_kage
+            elif self.player_state == "block" and self.sasuke_block is not None:
+                n = self.sasuke_block
+            elif self.player_state == "charge" and self.sasuke_block is not None:
+                n = self.sasuke_block
+            elif self.player_state == "dodge_left" and self.sasuke_dodge_left is not None:
+                n = self.sasuke_dodge_left
+            elif self.player_state == "dodge_right" and self.sasuke_dodge_right is not None:
+                n = self.sasuke_dodge_right
+            elif self.player_state == "attack" and self.sasuke_attack is not None:
+                n = self.sasuke_attack
+            elif self.player_state == "hurt" and self.sasuke_hurt is not None:
+                n = self.sasuke_hurt
+            elif self.player_state == "kawarimi" and self.kawarimi_log is not None:
+                n = self.kawarimi_log
+        else:
+            n = self.naruto_idle
+            if self.player_state == "dead" and self.naruto_dead is not None:
+                n = self.naruto_dead
+            elif self.player_state == "rasenshuriken" and self.naruto_rasenshuriken is not None:
+                n = self.naruto_rasenshuriken
+            elif self.player_state == "kage_bunshin" and self.naruto_kage is not None:
+                n = self.naruto_kage
+            elif self.player_state == "block" and self.naruto_block is not None:
+                n = self.naruto_block
+            elif self.player_state == "charge" and self.naruto_block is not None:
+                n = self.naruto_block
+            elif self.player_state == "dodge_left" and self.naruto_dodge_left is not None:
+                n = self.naruto_dodge_left
+            elif self.player_state == "dodge_right" and self.naruto_dodge_right is not None:
+                n = self.naruto_dodge_right
+            elif self.player_state == "attack" and self.naruto_attack is not None:
+                n = self.naruto_attack
+            elif self.player_state == "hurt" and self.naruto_hurt is not None:
+                n = self.naruto_hurt
+            elif self.player_state == "kawarimi" and self.kawarimi_log is not None:
+                n = self.kawarimi_log
             
         # Naruto (bên trái) luôn cần hướng sang PHẢI:
         # Lật ngang các trạng thái có ảnh gốc hướng trái: idle, kage_bunshin, block, rasenshuriken, charge
@@ -955,7 +1123,11 @@ class DesktopRenderer:
     def _draw_projectiles(self):
         offset_x, offset_y = self._get_shake_offset()
         for p in self.projectiles:
-            img = self.proj_images.get(p["kind"])
+            selected_char = getattr(self, "selected_char", "naruto")
+            if selected_char == "sasuke" and p["kind"] in self.sasuke_proj_images:
+                img = self.sasuke_proj_images.get(p["kind"])
+            else:
+                img = self.proj_images.get(p["kind"])
             if img is not None:
                 draw_img = img
                 if p["vx"] < 0:
@@ -964,8 +1136,16 @@ class DesktopRenderer:
                 y = int(p["y"] - draw_img.get_height() / 2) + offset_y
                 self.screen.blit(draw_img, (x, y))
             else:
-                color = (38, 179, 255) if p["kind"] != "kunai" else (255, 190, 70)
-                pygame.draw.circle(self.screen, color, (int(p["x"]) + offset_x, int(p["y"]) + offset_y), 16)
+                if p["kind"] == "kunai":
+                    color = (255, 190, 70)
+                    rad = 12
+                elif selected_char == "sasuke":
+                    color = (255, 75, 30) if p["kind"] == "rasenshuriken" else (170, 230, 255)
+                    rad = 26 if p["kind"] == "rasenshuriken" else 16
+                else:
+                    color = (0, 240, 160) if p["kind"] == "rasenshuriken" else (38, 179, 255)
+                    rad = 26 if p["kind"] == "rasenshuriken" else 16
+                pygame.draw.circle(self.screen, color, (int(p["x"]) + offset_x, int(p["y"]) + offset_y), max(4, int(rad * self.ui_scale)))
 
     def _update_effects(self, dt_sec):
         if self.shake_timer > 0:
@@ -1130,7 +1310,9 @@ class DesktopRenderer:
         player_chakra = state.get("player_chakra", 50)
         stage = state.get("campaign_stage", 2)
         
-        p = self.font.render("NARUTO", True, (230, 230, 230))
+        selected_char = state.get("selected_char", "naruto")
+        p_name = "SASUKE" if selected_char == "sasuke" else "NARUTO"
+        p = self.font.render(p_name, True, (230, 230, 230))
         
         # Lấy nhãn tên và avatar cho đối thủ
         if stage == 1:
@@ -1152,9 +1334,10 @@ class DesktopRenderer:
         
         avatar_size = max(32, int(54 * self.ui_scale))
         
-        # Vẽ Naruto
-        if self.avatar_naruto is not None:
-            av_scaled = pygame.transform.smoothscale(self.avatar_naruto, (avatar_size, avatar_size))
+        # Vẽ Player Avatar
+        p_avatar = self.avatar_sasuke if selected_char == "sasuke" else self.avatar_naruto
+        if p_avatar is not None:
+            av_scaled = pygame.transform.smoothscale(p_avatar, (avatar_size, avatar_size))
             self.screen.blit(av_scaled, (x, y))
         p_rect = p.get_rect(left=x + avatar_size + int(12 * self.ui_scale), centery=y + avatar_size // 2)
         self.screen.blit(p, p_rect)
@@ -1184,11 +1367,19 @@ class DesktopRenderer:
     def _draw_skill_icons(self, state, start_y):
         cooldowns = state.get("cooldown", {})
         remaining = state.get("rasenshuriken_remaining", 3)
-        skills = [
-            ("kage_bunshin", "Kage", 0),
-            ("rasengan", "Rasengan", 1),
-            ("rasenshuriken", "Shuriken", 2),
-        ]
+        selected_char = state.get("selected_char", "naruto")
+        if selected_char == "sasuke":
+            skills = [
+                ("kage_bunshin", "Sharingan", 0),
+                ("rasengan", "Chidori", 1),
+                ("rasenshuriken", "Katon", 2),
+            ]
+        else:
+            skills = [
+                ("kage_bunshin", "Kage", 0),
+                ("rasengan", "Rasengan", 1),
+                ("rasenshuriken", "Shuriken", 2),
+            ]
         base_x = self.hud_rect.x + int(20 * self.ui_scale)
         y = start_y
         
@@ -1204,7 +1395,7 @@ class DesktopRenderer:
             
         for key, label, idx in skills:
             x = base_x + idx * step
-            icon = self.skill_icons.get(key)
+            icon = self.sasuke_skill_icons.get(key) if selected_char == "sasuke" else self.skill_icons.get(key)
             
             # Background/border circle
             pygame.draw.circle(
@@ -1581,11 +1772,13 @@ class DesktopRenderer:
         pygame.draw.rect(self.screen, (120, 75, 25), scroll_rect, width=3, border_radius=4)
         pygame.draw.rect(self.screen, (120, 75, 25), (scroll_rect.x + 6, scroll_rect.y + 6, scroll_rect.width - 12, scroll_rect.height - 12), width=1, border_radius=4)
         
+        selected_char = getattr(self, "selected_char", "naruto")
+        p_name = "Sasuke" if selected_char == "sasuke" else "Naruto"
         stories = {
             1: (
                 "STAGE 1: NINJA ACADEMY",
                 [
-                    "Welcome, Naruto! Iruka-sensei is here to train you.",
+                    f"Welcome, {p_name}! Iruka-sensei is here to train you.",
                     "Practice dodging (A/D) and blocking (B) his training kunai.",
                     "TIP: Hold the B key to block, or press B within 0.22s",
                     "of the attack to trigger Perfect Kawarimi substitution!"
@@ -1596,7 +1789,7 @@ class DesktopRenderer:
                 [
                     "Mizuki has stolen the sacred Scroll of Seals!",
                     "Chase him through the Forest of Death before he escapes.",
-                    "Attack him using Kage Bunshin (1) and Rasengan (2)!",
+                    f"Attack him using Sharingan (1) and Chidori (2)!" if selected_char == "sasuke" else "Attack him using Kage Bunshin (1) and Rasengan (2)!",
                     "Chakra is consumed for skills; hold (4) to charge Chakra."
                 ]
             ),

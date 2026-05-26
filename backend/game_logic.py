@@ -10,6 +10,7 @@ import random
 class GameState:
     def __init__(self):
         self.campaign_stage = 1
+        self.selected_char = "naruto"
         self.reset_game()
 
     def reset_game(self):
@@ -85,13 +86,19 @@ class GameState:
         if skill_name == "charge_chakra":
             self.player_chakra = min(self.max_chakra, self.player_chakra + dt * 25.0)
             result["action"] = "charge_chakra"
-            result["message"] = f"⚡ Đang sạc Chakra... ({int(self.player_chakra)}/100)"
+            if self.selected_char == "sasuke":
+                result["message"] = f"⚡ Đang tụ Chakra lôi điện... ({int(self.player_chakra)}/100)"
+            else:
+                result["message"] = f"⚡ Đang sạc Chakra... ({int(self.player_chakra)}/100)"
             return result
 
         # 1. Kiểm tra Cooldown, Giới hạn & Yêu cầu Chakra
         if skill_name == "rasengan":
             if self.player_chakra < 40:
-                result["message"] = "⚠️ Không đủ Chakra để thi triển Rasengan! (Cần 40)"
+                if self.selected_char == "sasuke":
+                    result["message"] = "⚠️ Không đủ Chakra để thi triển Chidori! (Cần 40)"
+                else:
+                    result["message"] = "⚠️ Không đủ Chakra để thi triển Rasengan! (Cần 40)"
                 return result
             if now - self.last_skill_time["rasengan"] < 2.0:
                 return result # Chưa hồi xong
@@ -104,10 +111,16 @@ class GameState:
             
         elif skill_name == "rasenshuriken":
             if self.rasenshuriken_used_count >= 3:
-                result["message"] = "⚠️ Đã hết Chakra cho Rasenshuriken!"
+                if self.selected_char == "sasuke":
+                    result["message"] = "⚠️ Đã hết giới hạn thi triển Hào Hỏa Cầu!"
+                else:
+                    result["message"] = "⚠️ Đã hết Chakra cho Rasenshuriken!"
                 return result
             if self.player_chakra < 80:
-                result["message"] = "⚠️ Không đủ Chakra để thi triển Rasenshuriken! (Cần 80)"
+                if self.selected_char == "sasuke":
+                    result["message"] = "⚠️ Không đủ Chakra để thi triển Hào Hỏa Cầu! (Cần 80)"
+                else:
+                    result["message"] = "⚠️ Không đủ Chakra để thi triển Rasenshuriken! (Cần 80)"
                 return result
             if now - self.last_skill_time["rasenshuriken"] < 10.0:
                 return result # Chưa hồi xong
@@ -121,7 +134,10 @@ class GameState:
             
         elif skill_name == "kage_bunshin":
             if self.player_chakra < 30:
-                result["message"] = "⚠️ Không đủ Chakra để thi triển Kage Bunshin! (Cần 30)"
+                if self.selected_char == "sasuke":
+                    result["message"] = "⚠️ Không đủ Chakra để kích hoạt Sharingan! (Cần 30)"
+                else:
+                    result["message"] = "⚠️ Không đủ Chakra để thi triển Kage Bunshin! (Cần 30)"
                 return result
             if now - self.last_skill_time["kage_bunshin"] < 5.0:
                 return result
@@ -132,14 +148,21 @@ class GameState:
             self.player_damage_multiplier = 1.5
             self.last_skill_time["kage_bunshin"] = now
             result["action"] = "kage_bunshin"
-            result["message"] = "👥 Đa Trọng Ảnh Phân Thân! Sát thương x1.5"
+            if self.selected_char == "sasuke":
+                result["message"] = "👁️ Tả Luân Nhãn kích hoạt! Sát thương x1.5"
+            else:
+                result["message"] = "👥 Đa Trọng Ảnh Phân Thân! Sát thương x1.5"
             return result
         else:
             return result
 
         # 2. Xử lý Boss né đòn (30% tỷ lệ né nếu Boss không tấn công/nhận sát thương khác)
         if random.random() < 0.3:
-            result["message"] = f"💨 Mizuki dùng Thuật Thay Thế né được {skill_name.upper()}!"
+            if self.selected_char == "sasuke":
+                skill_disp = "CHIDORI" if skill_name == "rasengan" else "HÀO HỎA CẦU"
+            else:
+                skill_disp = skill_name.upper()
+            result["message"] = f"💨 Mizuki dùng Thuật Thay Thế né được {skill_disp}!"
             return result
 
         # 3. Tính toán sát thương tổng
@@ -148,7 +171,11 @@ class GameState:
         
         result["damage_dealt"] = total_damage
         result["hit"] = True
-        result["message"] = f"💥 Trúng đòn! {skill_name.upper()} gây {total_damage} sát thương!"
+        if self.selected_char == "sasuke":
+            skill_disp = "CHIDORI" if skill_name == "rasengan" else "HÀO HỎA CẦU"
+        else:
+            skill_disp = skill_name.upper()
+        result["message"] = f"💥 Trúng đòn! {skill_disp} gây {total_damage} sát thương!"
         
         return result
 
@@ -309,4 +336,5 @@ def update_game_state(game, player_skill, is_blocking, dodge_dir):
         "bot_action": bot_res.get("action"),
         "bot_hit": bot_res.get("hit", False),
         "bot_damage_dealt": bot_res.get("damage_dealt", 0),
+        "selected_char": game.selected_char,
     }

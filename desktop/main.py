@@ -332,6 +332,12 @@ def run():
                     elif quit_rect.collidepoint(event.pos):
                         running = False
                         break
+                    elif hasattr(renderer, "_menu_char_naruto_rect") and renderer._menu_char_naruto_rect.collidepoint(event.pos):
+                        game.selected_char = "naruto"
+                        renderer.push_log("Selected Naruto.")
+                    elif hasattr(renderer, "_menu_char_sasuke_rect") and renderer._menu_char_sasuke_rect.collidepoint(event.pos):
+                        game.selected_char = "sasuke"
+                        renderer.push_log("Selected Sasuke.")
                     elif controls["perf_prev"].collidepoint(event.pos):
                         perf_index = (perf_index - 1) % len(perf_order)
                         apply_performance_preset()
@@ -392,7 +398,7 @@ def run():
                 continue
 
             if in_menu:
-                renderer.draw_menu(perf_order[perf_index], camera_label(), cam_index, cam_mirror, game.campaign_stage)
+                renderer.draw_menu(perf_order[perf_index], camera_label(), cam_index, cam_mirror, game.campaign_stage, selected_char=game.selected_char)
                 continue
 
             # Màn hình cuộn thư kể chuyện - Mission Briefing Scroll
