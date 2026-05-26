@@ -49,6 +49,9 @@ class DesktopRenderer:
         self.hit_flashes = []
         self.chakra_particles = []
         self.boss_particles = []
+        self.leaf_particles = []
+        self.combo_count = 0
+        self.combo_timer = 0.0
         self.player_state = "idle"
         self.bot_state = "idle"
         self.player_state_until = 0.0
@@ -152,7 +155,7 @@ class DesktopRenderer:
         }
         return {"panel": panel, "start_rect": start_rect, "quit_rect": quit_rect, "controls": controls}
 
-    def draw_menu(self, performance_preset, camera_label, camera_index, mirror_on):
+    def draw_menu(self, performance_preset, camera_label, camera_index, mirror_on, stage=1):
         self.screen.fill((18, 20, 26))
         if self.bg is not None:
             bg = pygame.transform.smoothscale(self.bg, (self.width, self.height))
@@ -182,22 +185,47 @@ class DesktopRenderer:
         subtitle = self.font.render("Desktop Local Mode", True, (235, 235, 235))
         self.screen.blit(subtitle, subtitle.get_rect(center=(self.width // 2, panel.y + int(124 * self.ui_scale))))
 
+        # Phân giải Boss động theo Stage cho Menu Card
+        if stage == 1:
+            bot_name = "IRUKA"
+            bot_avatar = self.avatar_iruka
+            desc = "Academy Training - Learn kawarimi blocks!"
+        elif stage == 2:
+            bot_name = "MIZUKI"
+            bot_avatar = self.avatar_mizuki
+            desc = "Forest Ambush - Defeat the rogue Mizuki!"
+        else:
+            bot_name = "DEMON MIZUKI"
+            bot_avatar = self.avatar_demon_mizuki
+            desc = "Scroll Battle - Stop Demon Mizuki's dark fury!"
+
         if self.avatar_naruto is not None:
             av = int(110 * self.ui_scale)
             avatar = pygame.transform.smoothscale(self.avatar_naruto, (av, av))
             self.screen.blit(avatar, (panel.centerx - int(168 * self.ui_scale), panel.y + int(180 * self.ui_scale)))
-        if self.avatar_mizuki is not None:
+        
+        if bot_avatar is not None:
             av = int(110 * self.ui_scale)
-            avatar = pygame.transform.smoothscale(self.avatar_mizuki, (av, av))
+            avatar = pygame.transform.smoothscale(bot_avatar, (av, av))
+            if stage == 3:
+                tint = pygame.Surface(avatar.get_size(), pygame.SRCALPHA)
+                tint.fill((160, 60, 240, 160))
+                avatar_colored = avatar.copy()
+                avatar_colored.blit(tint, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+                avatar = avatar_colored
             self.screen.blit(avatar, (panel.centerx + int(58 * self.ui_scale), panel.y + int(180 * self.ui_scale)))
 
         versus = self.pause_title_font.render("VS", True, (255, 72, 72))
         self.screen.blit(versus, versus.get_rect(center=(self.width // 2, panel.y + int(246 * self.ui_scale))))
 
         p1 = self.font.render("NARUTO", True, (245, 245, 245))
-        p2 = self.font.render("MIZUKI", True, (245, 245, 245))
-        self.screen.blit(p1, p1.get_rect(center=(panel.centerx - int(120 * self.ui_scale), panel.y + int(340 * self.ui_scale))))
-        self.screen.blit(p2, p2.get_rect(center=(panel.centerx + int(120 * self.ui_scale), panel.y + int(340 * self.ui_scale))))
+        p2 = self.font.render(bot_name, True, (245, 245, 245))
+        self.screen.blit(p1, p1.get_rect(center=(panel.centerx - int(120 * self.ui_scale), panel.y + int(305 * self.ui_scale))))
+        self.screen.blit(p2, p2.get_rect(center=(panel.centerx + int(120 * self.ui_scale), panel.y + int(305 * self.ui_scale))))
+
+        desc_font = pygame.font.SysFont("consolas", max(11, int(14 * self.ui_scale)), italic=True)
+        desc_t = desc_font.render(f"STAGE {stage}: {desc}", True, (255, 184, 45))
+        self.screen.blit(desc_t, desc_t.get_rect(center=(self.width // 2, panel.y + int(330 * self.ui_scale))))
 
         mouse = pygame.mouse.get_pos()
         start_bg = (255, 186, 68) if start_rect.collidepoint(mouse) else (255, 166, 42)
@@ -562,13 +590,18 @@ class DesktopRenderer:
         if fighter == "player":
             x = self.scene_rect.left + int(210 * self.ui_scale)
             y = floor_y - int(235 * self.ui_scale)
+            self.combo_count = 0
+            self.combo_timer = 0.0
         else:
             x = self.scene_rect.right - int(220 * self.ui_scale)
             y = floor_y - int(235 * self.ui_scale)
+            self.combo_count += 1
+            self.combo_timer = 3.5
         self.damage_texts.append(
             {"text": f"-{amount}", "x": float(x), "y": float(y), "life": 0.9}
         )
         self.hit_flashes.append({"fighter": fighter, "life": 0.18})
+        self.spawn_leaf_burst(x, y + int(100 * self.ui_scale), count=10)
 
     def push_log(self, text):
         ts = time.strftime("%H:%M:%S")
@@ -578,7 +611,7 @@ class DesktopRenderer:
     def draw(self, game_state, input_snapshot, latest_frame, dt_sec):
         self.campaign_stage = game_state.get("campaign_stage", 2)
         self.screen.fill((18, 20, 26))
-        self._draw_scene_background()
+        self._draw_scene_background(dt_sec)
         pygame.draw.rect(self.screen, (20, 22, 30), self.hud_rect, border_radius=8)
         pygame.draw.rect(self.screen, (20, 22, 30), self.controls_rect, border_radius=8)
         pygame.draw.rect(self.screen, (20, 22, 30), self.preview_rect, border_radius=8)
@@ -590,6 +623,8 @@ class DesktopRenderer:
         self._update_effects(dt_sec)
         self._draw_fighters()
         self._draw_projectiles()
+        self._draw_combo_counter()
+        self._draw_danger_warning(game_state.get("bot_attack_warning", False))
         self._draw_hit_flashes()
         self._draw_damage_texts()
         if game_state.get("game_over") and game_state.get("ko_cinematic"):
@@ -605,6 +640,9 @@ class DesktopRenderer:
         else:
             self._draw_preview_off_panel()
 
+        if "story_scroll_ticks" in game_state:
+            self.draw_story_scroll(self.campaign_stage, game_state["story_scroll_ticks"])
+
         pygame.display.flip()
         self.clock.tick(60)
 
@@ -615,17 +653,130 @@ class DesktopRenderer:
         if now >= self.bot_state_until:
             self.bot_state = "idle"
 
-    def _draw_scene_background(self):
+    def _draw_scene_background(self, dt_sec):
         offset_x, offset_y = self._get_shake_offset()
         rect = self.scene_rect.copy()
         rect.x += offset_x
         rect.y += offset_y
         if self.bg is None:
             pygame.draw.rect(self.screen, (35, 38, 48), rect, border_radius=8)
-            return
-        bg = pygame.transform.smoothscale(self.bg, rect.size)
-        self.screen.blit(bg, rect.topleft)
+        else:
+            bg = pygame.transform.smoothscale(self.bg, rect.size)
+            self.screen.blit(bg, rect.topleft)
+            
+            # Lớp phủ mờ tối nhẹ
+            dark_overlay = pygame.Surface(rect.size, pygame.SRCALPHA)
+            dark_overlay.fill((0, 0, 0, 45))
+            self.screen.blit(dark_overlay, rect.topleft)
+
         pygame.draw.rect(self.screen, (255, 166, 42), rect, width=2, border_radius=8)
+
+        # Cập nhật và vẽ các hạt lá rơi Konoha
+        import math
+        import random
+        stage = getattr(self, "campaign_stage", 2)
+        max_leaves = 30
+        
+        # Spawn lá mới ở biên trên/trái
+        if len(self.leaf_particles) < max_leaves and random.random() < 0.22:
+            size = random.uniform(6, 12) * self.ui_scale
+            if random.random() < 0.7:
+                x = random.uniform(self.scene_rect.left - 50, self.scene_rect.right)
+                y = self.scene_rect.top - 20
+            else:
+                x = self.scene_rect.left - 20
+                y = random.uniform(self.scene_rect.top, self.scene_rect.bottom - 100)
+            
+            if stage == 3:
+                # Tro tàn hắc ám màu tím quỷ dị
+                color = random.choice([
+                    (140, 50, 220),
+                    (90, 20, 160),
+                    (40, 10, 80)
+                ])
+                speed_x = random.uniform(40, 100) * self.ui_scale
+                speed_y = random.uniform(60, 130) * self.ui_scale
+            else:
+                # Lá cây làng Lá
+                color = random.choice([
+                    (50, 160, 60),
+                    (80, 180, 90),
+                    (230, 140, 10),
+                    (210, 110, 10)
+                ])
+                speed_x = random.uniform(60, 140) * self.ui_scale
+                speed_y = random.uniform(80, 160) * self.ui_scale
+                
+            self.leaf_particles.append({
+                "x": x,
+                "y": y,
+                "size": size,
+                "angle": random.uniform(0, math.pi * 2),
+                "speed_x": speed_x,
+                "speed_y": speed_y,
+                "rot_speed": random.uniform(1.0, 4.0),
+                "color": color
+            })
+            
+        old_clip = self.screen.get_clip()
+        self.screen.set_clip(self.scene_rect)
+        
+        updated_particles = []
+        for p in self.leaf_particles:
+            p["x"] += p["speed_x"] * dt_sec
+            p["y"] += p["speed_y"] * dt_sec
+            p["angle"] += p["rot_speed"] * dt_sec
+            
+            if (p["y"] < self.scene_rect.bottom + 20 and 
+                p["x"] < self.scene_rect.right + 20 and 
+                p["x"] > self.scene_rect.left - 60):
+                updated_particles.append(p)
+                
+                # Vẽ hình đa giác xoay (kim cương) đại diện cho lá cây
+                cx, cy = p["x"] + offset_x, p["y"] + offset_y
+                s = p["size"]
+                a = p["angle"]
+                
+                cos_a = math.cos(a)
+                sin_a = math.sin(a)
+                
+                pt1 = (int(cx + s * cos_a), int(cy + s * sin_a))
+                pt2 = (int(cx - s * sin_a / 2), int(cy + s * cos_a / 2))
+                pt3 = (int(cx - s * cos_a), int(cy - s * sin_a))
+                pt4 = (int(cx + s * sin_a / 2), int(cy - s * cos_a / 2))
+                
+                pygame.draw.polygon(self.screen, p["color"], [pt1, pt2, pt3, pt4])
+                
+        self.leaf_particles = updated_particles
+        self.screen.set_clip(old_clip)
+
+    def spawn_leaf_burst(self, x, y, count=8):
+        import math
+        import random
+        stage = getattr(self, "campaign_stage", 2)
+        for _ in range(count):
+            size = random.uniform(5, 10) * self.ui_scale
+            angle = random.uniform(0, math.pi * 2)
+            speed = random.uniform(150, 300) * self.ui_scale
+            dir_a = random.uniform(0, math.pi * 2)
+            speed_x = speed * math.cos(dir_a)
+            speed_y = speed * math.sin(dir_a)
+            
+            if stage == 3:
+                color = random.choice([(140, 50, 220), (90, 20, 160), (40, 10, 80)])
+            else:
+                color = random.choice([(50, 160, 60), (80, 180, 90), (230, 140, 10), (210, 110, 10)])
+                
+            self.leaf_particles.append({
+                "x": float(x),
+                "y": float(y),
+                "size": size,
+                "angle": angle,
+                "speed_x": speed_x,
+                "speed_y": speed_y,
+                "rot_speed": random.uniform(3.0, 8.0),
+                "color": color
+            })
 
     def _get_bottom_padding(self, surface):
         if surface is None:
@@ -822,6 +973,12 @@ class DesktopRenderer:
             if self.shake_timer <= 0:
                 self.shake_timer = 0.0
 
+        if self.combo_timer > 0:
+            self.combo_timer -= dt_sec
+            if self.combo_timer <= 0:
+                self.combo_timer = 0.0
+                self.combo_count = 0
+
         for item in self.damage_texts:
             item["life"] -= dt_sec
             item["y"] -= 72 * dt_sec
@@ -935,7 +1092,35 @@ class DesktopRenderer:
         pygame.draw.rect(self.screen, (58, 58, 58), (x, y, bar_w, bar_h), border_radius=int(bar_h // 2))
         if chakra > 0:
             pygame.draw.rect(self.screen, color, (x, y, int(bar_w * chakra / 100), bar_h), border_radius=int(bar_h // 2))
-        txt = self.small_font.render(f"Chakra: {chakra}/100", True, (240, 240, 240))
+        
+        # Hiệu ứng phát sáng Chakra cực đại!
+        if chakra == 100:
+            import math
+            pulse = int(140 + 115 * math.sin(time.perf_counter() * 12))
+            glow_surf = pygame.Surface((bar_w + 6, bar_h + 6), pygame.SRCALPHA)
+            pygame.draw.rect(glow_surf, (38, 145, 255, pulse), (0, 0, bar_w + 6, bar_h + 6), width=2, border_radius=int((bar_h + 6) // 2))
+            self.screen.blit(glow_surf, (x - 3, y - 3))
+            
+            # Sinh ra các hạt chakra bay từ thanh năng lượng khi đầy!
+            import random
+            if random.random() < 0.15:
+                p_x = x + random.randint(0, bar_w)
+                p_y = y + bar_h // 2
+                self.chakra_particles.append({
+                    "x": float(p_x),
+                    "y": float(p_y),
+                    "r": float(random.randint(2, 4) * self.ui_scale),
+                    "vy": -float(random.randint(30, 75) * self.ui_scale),
+                    "life": 0.5
+                })
+            
+            txt_val = "ULTIMATE READY!"
+            txt_color = (255, 220, 40)
+        else:
+            txt_val = f"Chakra: {chakra}/100"
+            txt_color = (240, 240, 240)
+            
+        txt = self.small_font.render(txt_val, True, txt_color)
         txt_rect = txt.get_rect(center=(x + bar_w // 2, y + bar_h // 2))
         self.screen.blit(txt, txt_rect)
 
@@ -1237,3 +1422,235 @@ class DesktopRenderer:
                     (int(px + pt[0] * pw), int(py + pt[1] * ph)),
                     pt_r,
                 )
+
+    def _draw_combo_counter(self):
+        if self.combo_count < 2 or self.combo_timer <= 0:
+            return
+        import math
+        t_rem = max(0.0, 3.5 - self.combo_timer)
+        scale_in = max(1.0, 1.6 - t_rem * 4.0)
+        alpha = max(0, min(255, int(255 * (self.combo_timer / 1.0)))) if self.combo_timer < 1.0 else 255
+        
+        combo_font = pygame.font.SysFont("impact", max(24, int(42 * self.ui_scale * scale_in)))
+        
+        if self.combo_count >= 8:
+            msg = "SHINOBI STYLE!"
+            color = (255, 60, 60)
+        elif self.combo_count >= 5:
+            msg = "AWESOME!"
+            color = (255, 140, 0)
+        else:
+            msg = "GREAT!"
+            color = (255, 204, 34)
+            
+        txt = combo_font.render(f"{self.combo_count}x COMBO", True, color)
+        sub_font = pygame.font.SysFont("consolas", max(13, int(18 * self.ui_scale * min(1.2, scale_in))))
+        sub_txt = sub_font.render(msg, True, (240, 240, 240))
+        
+        txt.set_alpha(alpha)
+        sub_txt.set_alpha(alpha)
+        
+        x = self.scene_rect.x + int(30 * self.ui_scale)
+        y = self.scene_rect.y + int(70 * self.ui_scale)
+        
+        self.screen.blit(txt, (x, y))
+        self.screen.blit(sub_txt, (x, y + txt.get_height() + 2))
+
+    def _draw_danger_warning(self, is_warning):
+        if not is_warning:
+            return
+        import math
+        pulse = int(140 + 115 * math.sin(time.perf_counter() * 18))
+        warn_font = pygame.font.SysFont("impact", max(20, int(26 * self.ui_scale)))
+        txt = warn_font.render("!!! DANGER !!!", True, (255, 40, 40))
+        
+        surf = pygame.Surface((txt.get_width() + 24, txt.get_height() + 8), pygame.SRCALPHA)
+        surf.fill((100, 10, 10, int(pulse * 0.4)))
+        pygame.draw.rect(surf, (255, 40, 40, pulse), (0, 0, surf.get_width(), surf.get_height()), width=2, border_radius=6)
+        
+        surf.blit(txt, (12, 4))
+        x = self.scene_rect.centerx - surf.get_width() // 2
+        y = self.scene_rect.y + int(12 * self.ui_scale)
+        self.screen.blit(surf, (x, y))
+
+    def draw_intro(self, dt_sec):
+        self.screen.fill((18, 20, 26))
+        
+        # Panned Background
+        import math
+        pan_x = int(30 * math.sin(time.perf_counter() * 0.12))
+        pan_y = int(15 * math.cos(time.perf_counter() * 0.08))
+        if self.bg is not None:
+            bg_size = (self.width + 60, self.height + 30)
+            bg_scaled = pygame.transform.smoothscale(self.bg, bg_size)
+            self.screen.blit(bg_scaled, (pan_x - 30, pan_y - 15))
+            
+        # Lớp phủ mờ
+        shade = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        shade.fill((0, 0, 0, 155))
+        self.screen.blit(shade, (0, 0))
+        
+        # Vẽ lá rơi trên toàn màn hình Intro
+        old_clip = self.screen.get_clip()
+        self.screen.set_clip(pygame.Rect(0, 0, self.width, self.height))
+        import random
+        if len(self.leaf_particles) < 20 and random.random() < 0.2:
+            self.leaf_particles.append({
+                "x": random.uniform(-20, self.width),
+                "y": -20,
+                "size": random.uniform(8, 14) * self.ui_scale,
+                "angle": random.uniform(0, math.pi * 2),
+                "speed_x": random.uniform(80, 160) * self.ui_scale,
+                "speed_y": random.uniform(90, 150) * self.ui_scale,
+                "rot_speed": random.uniform(1.0, 3.5),
+                "color": random.choice([(50, 160, 60), (80, 180, 90), (230, 140, 10), (210, 110, 10)])
+            })
+            
+        updated = []
+        for p in self.leaf_particles:
+            p["x"] += p["speed_x"] * dt_sec
+            p["y"] += p["speed_y"] * dt_sec
+            p["angle"] += p["rot_speed"] * dt_sec
+            if p["y"] < self.height + 20 and p["x"] < self.width + 20 and p["x"] > -60:
+                updated.append(p)
+                cx, cy = p["x"], p["y"]
+                s = p["size"]
+                a = p["angle"]
+                pt1 = (int(cx + s * math.cos(a)), int(cy + s * math.sin(a)))
+                pt2 = (int(cx - s * math.sin(a)/2), int(cy + s * math.cos(a)/2))
+                pt3 = (int(cx - s * math.cos(a)), int(cy - s * math.sin(a)))
+                pt4 = (int(cx + s * math.sin(a)/2), int(cy - s * math.cos(a)/2))
+                pygame.draw.polygon(self.screen, p["color"], [pt1, pt2, pt3, pt4])
+        self.leaf_particles = updated
+        self.screen.set_clip(old_clip)
+        
+        # Logo Tiêu đề game
+        logo_font = pygame.font.SysFont("impact", max(35, int(68 * self.ui_scale)))
+        sub_logo_font = pygame.font.SysFont("consolas", max(14, int(20 * self.ui_scale)), bold=True)
+        logo_str = "SHINOBI VISION BATTLE"
+        
+        # Drop Shadow
+        ts = logo_font.render(logo_str, True, (10, 10, 15))
+        self.screen.blit(ts, ts.get_rect(center=(self.width // 2 + 4, self.height // 2 - 40 + 4)))
+        # Main Logo
+        tm = logo_font.render(logo_str, True, (255, 184, 45))
+        self.screen.blit(tm, tm.get_rect(center=(self.width // 2, self.height // 2 - 40)))
+        
+        sub = sub_logo_font.render("CV INTERACTIVE FIGHTER - GENIN EDITION", True, (200, 208, 222))
+        self.screen.blit(sub, sub.get_rect(center=(self.width // 2, self.height // 2 + 16)))
+        
+        # Dòng chữ nhấp nháy Press start
+        pulse_start = int(140 + 115 * math.sin(time.perf_counter() * 5))
+        start_font = pygame.font.SysFont("impact", max(18, int(28 * self.ui_scale)))
+        start_text = start_font.render("PRESS ENTER TO START", True, (255, 204, 34))
+        start_text.set_alpha(pulse_start)
+        self.screen.blit(start_text, start_text.get_rect(center=(self.width // 2, self.height // 2 + 160)))
+        
+        # Bản quyền
+        footer_font = pygame.font.SysFont("consolas", max(10, int(13 * self.ui_scale)))
+        footer = footer_font.render("© 2026 Developed by Antigravity", True, (130, 140, 155))
+        self.screen.blit(footer, footer.get_rect(center=(self.width // 2, self.height - int(24 * self.ui_scale))))
+        
+        pygame.display.flip()
+        self.clock.tick(60)
+
+    def draw_story_scroll(self, stage, ticks):
+        # Thiết kế khung cuộn thư gỗ
+        scroll_rect = pygame.Rect(
+            self.scene_rect.x + int(40 * self.ui_scale),
+            self.scene_rect.y + int(30 * self.ui_scale),
+            self.scene_rect.width - int(80 * self.ui_scale),
+            self.scene_rect.height - int(60 * self.ui_scale)
+        )
+        
+        # Thanh cuốn gỗ hai bên
+        roll_w = int(12 * self.ui_scale)
+        roll_h_pad = int(10 * self.ui_scale)
+        pygame.draw.rect(self.screen, (100, 60, 20), (scroll_rect.x - roll_w, scroll_rect.y - roll_h_pad, roll_w, scroll_rect.height + roll_h_pad * 2), border_radius=4)
+        pygame.draw.rect(self.screen, (100, 60, 20), (scroll_rect.right, scroll_rect.y - roll_h_pad, roll_w, scroll_rect.height + roll_h_pad * 2), border_radius=4)
+        
+        # Núm cuốn vàng
+        tip_r = int(8 * self.ui_scale)
+        pygame.draw.circle(self.screen, (220, 180, 40), (scroll_rect.x - roll_w // 2, scroll_rect.y - roll_h_pad), tip_r)
+        pygame.draw.circle(self.screen, (220, 180, 40), (scroll_rect.x - roll_w // 2, scroll_rect.y + scroll_rect.height + roll_h_pad), tip_r)
+        pygame.draw.circle(self.screen, (220, 180, 40), (scroll_rect.right + roll_w // 2, scroll_rect.y - roll_h_pad), tip_r)
+        pygame.draw.circle(self.screen, (220, 180, 40), (scroll_rect.right + roll_w // 2, scroll_rect.y + scroll_rect.height + roll_h_pad), tip_r)
+        
+        # Giấy thư cổ
+        pygame.draw.rect(self.screen, (235, 215, 175), scroll_rect, border_radius=4)
+        pygame.draw.rect(self.screen, (120, 75, 25), scroll_rect, width=3, border_radius=4)
+        pygame.draw.rect(self.screen, (120, 75, 25), (scroll_rect.x + 6, scroll_rect.y + 6, scroll_rect.width - 12, scroll_rect.height - 12), width=1, border_radius=4)
+        
+        stories = {
+            1: (
+                "STAGE 1: NINJA ACADEMY",
+                [
+                    "Welcome, Naruto! Iruka-sensei is here to train you.",
+                    "Practice dodging (A/D) and blocking (B) his training kunai.",
+                    "TIP: Hold the B key to block, or press B within 0.22s",
+                    "of the attack to trigger Perfect Kawarimi substitution!"
+                ]
+            ),
+            2: (
+                "STAGE 2: FOREST AMBUSH",
+                [
+                    "Mizuki has stolen the sacred Scroll of Seals!",
+                    "Chase him through the Forest of Death before he escapes.",
+                    "Attack him using Kage Bunshin (1) and Rasengan (2)!",
+                    "Chakra is consumed for skills; hold (4) to charge Chakra."
+                ]
+            ),
+            3: (
+                "STAGE 3: THE DEMON SEAL",
+                [
+                    "Mizuki has absorbed the dark power of the scroll!",
+                    "He has transformed into Demon Mizuki, wrapped in dark aura.",
+                    "WARNING: He attacks aggressively and throws double phi tieu!",
+                    "Defeat the demon, retrieve the scroll, and protect the Leaf!"
+                ]
+            )
+        }
+        
+        title_text, lines = stories.get(stage, ("MISSION BRIEFING", []))
+        
+        title_font = pygame.font.SysFont("impact", max(22, int(30 * self.ui_scale)))
+        title_surf = title_font.render(title_text, True, (130, 30, 20))
+        self.screen.blit(title_surf, title_surf.get_rect(center=(scroll_rect.centerx, scroll_rect.y + int(28 * self.ui_scale))))
+        
+        # Đường kẻ phân cách
+        pygame.draw.line(
+            self.screen,
+            (160, 40, 30),
+            (scroll_rect.x + int(40 * self.ui_scale), scroll_rect.y + int(48 * self.ui_scale)),
+            (scroll_rect.right - int(40 * self.ui_scale), scroll_rect.y + int(48 * self.ui_scale)),
+            2
+        )
+        
+        # Cơ chế chạy chữ typewriter
+        chars_revealed = int(ticks * 1.5)
+        y_offset = scroll_rect.y + int(65 * self.ui_scale)
+        char_counter = 0
+        
+        for line in lines:
+            if char_counter >= chars_revealed:
+                break
+            
+            line_len = len(line)
+            if char_counter + line_len <= chars_revealed:
+                visible_text = line
+            else:
+                visible_text = line[:chars_revealed - char_counter]
+                
+            char_counter += line_len
+            
+            t = self.small_font.render(visible_text, True, (45, 45, 55))
+            self.screen.blit(t, (scroll_rect.x + int(24 * self.ui_scale), y_offset))
+            y_offset += t.get_height() + int(8 * self.ui_scale)
+            
+        # Dòng nhắc nhở bắt đầu nhấp nháy sau khi chạy xong chữ
+        if char_counter <= chars_revealed:
+            import math
+            if int(time.perf_counter() * 2) % 2 == 0:
+                prompt_font = pygame.font.SysFont("consolas", max(12, int(15 * self.ui_scale)), bold=True)
+                prompt = prompt_font.render("PRESS SPACE TO BEGIN MISSION...", True, (130, 30, 20))
+                self.screen.blit(prompt, prompt.get_rect(center=(scroll_rect.centerx, scroll_rect.bottom - int(24 * self.ui_scale))))

@@ -191,7 +191,11 @@ def run():
         ai_started = False
 
     running = True
-    in_menu = True
+    in_intro = True
+    in_menu = False
+    in_story_scroll = False
+    story_scroll_ticks = 0
+    story_scroll_seen = {1: False, 2: False, 3: False}
     paused = False
     is_fullscreen = False
     last_event_id = None
@@ -225,6 +229,17 @@ def run():
                             renderer.resize(1280, 720)
                             is_fullscreen = False
                         continue
+                    
+                    if in_intro:
+                        if event.key == pygame.K_ESCAPE:
+                            running = False
+                            break
+                        if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                            in_intro = False
+                            in_menu = True
+                            renderer.push_log("Entered menu.")
+                        continue
+
                     if in_menu:
                         if event.key == pygame.K_ESCAPE:
                             running = False
@@ -232,12 +247,24 @@ def run():
                         if event.key in (pygame.K_RETURN, pygame.K_SPACE):
                             start_runtime()
                             in_menu = False
+                            story_scroll_seen = {1: False, 2: False, 3: False}
+                            if not story_scroll_seen[game.campaign_stage]:
+                                in_story_scroll = True
+                                story_scroll_ticks = 0
                             renderer.push_log("Desktop mode started.")
-                            renderer.push_log(f"Performance preset: {perf_order[perf_index]}")
-                            renderer.push_log(f"Camera: {camera_label()}")
-                            renderer.push_log(f"Preview FPS: {preview_fps}")
-                            renderer.push_log(f"AI priority mode: {'ON' if ai_priority_mode else 'OFF'}")
-                            renderer.push_log("Keyboard test: 1/2/3 B A/D R H P ESC")
+                        continue
+
+                    if in_story_scroll:
+                        if event.key == pygame.K_ESCAPE:
+                            stop_runtime()
+                            in_story_scroll = False
+                            in_menu = True
+                            renderer.push_log("Back to menu.")
+                        elif event.key in (pygame.K_SPACE, pygame.K_RETURN):
+                            in_story_scroll = False
+                            story_scroll_seen[game.campaign_stage] = True
+                            renderer.push_log("Mission started!")
+                            last_tick = time.perf_counter()
                         continue
                     if event.key == pygame.K_ESCAPE:
                         if game.game_over:
@@ -262,6 +289,8 @@ def run():
                                 game_over_triggered = False
                                 prev_player_hp = game.player_hp
                                 prev_bot_hp = game.bot_hp
+                                in_story_scroll = True
+                                story_scroll_ticks = 0
                                 renderer.push_log(f"Advanced to Stage {game.campaign_stage}!")
                             else:
                                 stop_runtime()
@@ -295,12 +324,11 @@ def run():
                     if start_rect.collidepoint(event.pos):
                         start_runtime()
                         in_menu = False
+                        story_scroll_seen = {1: False, 2: False, 3: False}
+                        if not story_scroll_seen[game.campaign_stage]:
+                            in_story_scroll = True
+                            story_scroll_ticks = 0
                         renderer.push_log("Desktop mode started.")
-                        renderer.push_log(f"Performance preset: {perf_order[perf_index]}")
-                        renderer.push_log(f"Camera: {camera_label()}")
-                        renderer.push_log(f"Preview FPS: {preview_fps}")
-                        renderer.push_log(f"AI priority mode: {'ON' if ai_priority_mode else 'OFF'}")
-                        renderer.push_log("Keyboard test: 1/2/3 B A/D R H P ESC")
                     elif quit_rect.collidepoint(event.pos):
                         running = False
                         break
@@ -354,8 +382,51 @@ def run():
             if not running:
                 break
 
+            # Màn hình mở đầu - Intro Cinematic
+            if in_intro:
+                frame, _ = camera.read_latest() if camera is not None else (None, 0.0)
+                now = time.perf_counter()
+                dt_sec = now - last_tick
+                last_tick = now
+                renderer.draw_intro(dt_sec)
+                continue
+
             if in_menu:
-                renderer.draw_menu(perf_order[perf_index], camera_label(), cam_index, cam_mirror)
+                renderer.draw_menu(perf_order[perf_index], camera_label(), cam_index, cam_mirror, game.campaign_stage)
+                continue
+
+            # Màn hình cuộn thư kể chuyện - Mission Briefing Scroll
+            if in_story_scroll:
+                frame, _ = camera.read_latest() if camera is not None else (None, 0.0)
+                now = time.perf_counter()
+                dt_sec = now - last_tick
+                last_tick = now
+                
+                current_state = {
+                    "player_hp": game.player_hp,
+                    "bot_hp": game.bot_hp,
+                    "cooldown": {
+                        "rasengan": 0.0,
+                        "rasenshuriken": 0.0,
+                        "kage_bunshin": 0.0
+                    },
+                    "rasenshuriken_remaining": 3 - game.rasenshuriken_used_count,
+                    "game_over": False,
+                    "winner": None,
+                    "campaign_stage": game.campaign_stage,
+                    "story_scroll_ticks": story_scroll_ticks,
+                }
+                story_scroll_ticks += 1
+                
+                snap = input_state.snapshot()
+                render_snapshot = dict(snap)
+                render_snapshot["latency_ema_ms"] = latency_ema
+                render_snapshot["ai_priority_state"] = priority_state if ai_priority_mode else "off"
+                render_snapshot["preview_fps"] = current_preview_fps
+                render_snapshot["camera_fps_actual"] = camera.actual_fps() if camera is not None else 0.0
+                render_snapshot["render_fps_actual"] = renderer.render_fps()
+                
+                renderer.draw(current_state, render_snapshot, frame, dt_sec)
                 continue
 
             if paused:
@@ -407,7 +478,10 @@ def run():
             keys = pygame.key.get_pressed()
             if keys[pygame.K_4]:
                 skill = "charge_chakra"
-            elif manual_action:
+            if keys[pygame.K_b]:
+                block = True
+            
+            if manual_action:
                 if "skill" in manual_action:
                     skill = manual_action["skill"]
                 if "block" in manual_action:
@@ -530,6 +604,7 @@ def run():
             render_snapshot["preview_fps"] = current_preview_fps
             render_snapshot["camera_fps_actual"] = camera.actual_fps() if camera is not None else 0.0
             render_snapshot["render_fps_actual"] = renderer.render_fps()
+            state["bot_attack_warning"] = (game.next_bot_attack_time - time.time()) < 0.75 and (not game.game_over)
             renderer.draw(state, render_snapshot, frame, dt_sec)
     except Exception as exc:
         traceback.print_exc()
