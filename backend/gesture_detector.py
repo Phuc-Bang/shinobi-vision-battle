@@ -191,12 +191,23 @@ class GestureDetector:
         return smoothed
 
     def is_hand_open(self, hand_lms):
-        # Đếm ngón tay mở (so sánh đầu ngón với khớp phía dưới)
-        tips = [8, 12, 16, 20]
+        # Sử dụng giải thuật khoảng cách Euclid tương đối so với cổ tay (Landmark 0)
+        # Giúp nhận diện chính xác kể cả khi tay nghiêng, xoay ngang hoặc chéo (rotation & scale invariant)
+        wrist = hand_lms[0]
+        tips = [8, 12, 16, 20]  # Đầu các ngón: Trỏ, Giữa, Áp út, Út
         opened = 0
+        
         for tip in tips:
-            if hand_lms[tip].y < hand_lms[tip - 2].y:
+            # Khớp gốc ngón tương ứng (MCP): index=5, middle=9, ring=13, pinky=17
+            mcp = hand_lms[tip - 3]
+            
+            dist_to_tip = self.get_distance(wrist, hand_lms[tip])
+            dist_to_mcp = self.get_distance(wrist, mcp)
+            
+            # Nếu đầu ngón tay duỗi xa hơn khớp gốc ít nhất 10% (để tránh nhiễu/jitter)
+            if dist_to_tip > dist_to_mcp * 1.1:
                 opened += 1
+                
         return opened >= 3
 
     def confirm_action(self, action_key, condition):
@@ -265,17 +276,27 @@ class GestureDetector:
 
         pose = pose_res.pose_landmarks[0]
         _, nose_y = self.smooth_pose_keypoint(pose, 0)
-        _, l_sh_y = self.smooth_pose_keypoint(pose, 11)
-        _, r_sh_y = self.smooth_pose_keypoint(pose, 12)
+        l_sh_x, l_sh_y = self.smooth_pose_keypoint(pose, 11)
+        r_sh_x, r_sh_y = self.smooth_pose_keypoint(pose, 12)
         l_wr_x, l_wr_y = self.smooth_pose_keypoint(pose, 15)
         r_wr_x, r_wr_y = self.smooth_pose_keypoint(pose, 16)
         _, l_hip_y = self.smooth_pose_keypoint(pose, 23)
         
+        # Cân chỉnh động dựa trên độ rộng vai để hoạt động ổn định ở mọi khoảng cách (scale-invariant)
+        shoulder_dist = math.sqrt((l_sh_x - r_sh_x) ** 2 + (l_sh_y - r_sh_y) ** 2)
+        if shoulder_dist < 0.05:
+            shoulder_dist = 0.20
+        scale_factor = shoulder_dist / 0.20
+        
+        dynamic_dodge_threshold = self.dodge_threshold * scale_factor
+        dynamic_block_wrist_dist = self.block_wrist_dist * scale_factor
+        dynamic_kage_wrist_dist = self.kage_wrist_dist * scale_factor
+        
         # --- DODGE: chỉ phát hiện khi thân người nghiêng rõ ---
-        if self.confirm_action("dodge_left", l_sh_y > r_sh_y + self.dodge_threshold):
+        if self.confirm_action("dodge_left", l_sh_y > r_sh_y + dynamic_dodge_threshold):
             self.action_counters["dodge_right"] = 0
             result["dodge"], result["message"] = "left", "Né sang TRÁI"
-        elif self.confirm_action("dodge_right", r_sh_y > l_sh_y + self.dodge_threshold):
+        elif self.confirm_action("dodge_right", r_sh_y > l_sh_y + dynamic_dodge_threshold):
             self.action_counters["dodge_left"] = 0
             result["dodge"], result["message"] = "right", "Né sang PHẢI"
 
@@ -284,7 +305,7 @@ class GestureDetector:
         # --- BLOCK & SKILL: bỏ qua khi đang dodge để tránh xung đột ---
         if not result["dodge"]:
             block_condition = (
-                dist_wrists < self.block_wrist_dist and l_wr_y < nose_y and r_wr_y < nose_y
+                dist_wrists < dynamic_block_wrist_dist and l_wr_y < nose_y and r_wr_y < nose_y
             )
             if self.confirm_action("block", block_condition):
                 result["block"], result["message"] = True, "🛡️ ĐANG ĐỠ ĐÒN!"
@@ -317,7 +338,7 @@ class GestureDetector:
             if not result["block"]:
                 left_hand_up = l_wr_y < l_sh_y
                 right_hand_up = r_wr_y < r_sh_y
-                kage_cond = dist_wrists < self.kage_wrist_dist and l_sh_y < l_wr_y < l_hip_y
+                kage_cond = dist_wrists < dynamic_kage_wrist_dist and l_sh_y < l_wr_y < l_hip_y
                 rasenshuriken_cond = (
                     left_hand_up and right_hand_up and is_r_open and is_l_open
                 )

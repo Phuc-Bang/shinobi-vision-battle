@@ -186,6 +186,8 @@ def run():
     current_preview_fps = preview_fps
     priority_state = "normal"
     ai_started = False
+    game_over_triggered = False
+    game_over_show_overlay_at = 0.0
 
     try:
         while running:
@@ -226,6 +228,9 @@ def run():
                         break
                     if event.key == pygame.K_r:
                         game.reset_game()
+                        game_over_triggered = False
+                        prev_player_hp = game.player_hp
+                        prev_bot_hp = game.bot_hp
                         renderer.push_log("Game reset.")
                     if event.key == pygame.K_h:
                         renderer.show_skeleton = not renderer.show_skeleton
@@ -280,6 +285,7 @@ def run():
                         renderer.push_log("Paused: False")
                     elif btn["restart"].collidepoint(event.pos):
                         game.reset_game()
+                        game_over_triggered = False
                         prev_player_hp = game.player_hp
                         prev_bot_hp = game.bot_hp
                         paused = False
@@ -287,6 +293,7 @@ def run():
                     elif btn["menu"].collidepoint(event.pos):
                         stop_runtime()
                         game.reset_game()
+                        game_over_triggered = False
                         prev_player_hp = game.player_hp
                         prev_bot_hp = game.bot_hp
                         paused = False
@@ -348,10 +355,51 @@ def run():
             block = snapshot.get("block", False)
             dodge = snapshot.get("dodge")
 
-            if manual_action:
-                skill = manual_action.get("skill", skill)
-                block = manual_action.get("block", block)
-                dodge = manual_action.get("dodge", dodge)
+            if game.game_over:
+                if not game_over_triggered:
+                    game_over_triggered = True
+                    game_over_show_overlay_at = time.perf_counter() + 1.2
+                    if game.winner == "player":
+                        renderer.push_log("WIN")
+                        renderer.trigger_state("bot", "dead", 1.2)
+                    else:
+                        renderer.push_log("LOSE")
+                        renderer.trigger_state("player", "dead", 1.2)
+
+                frame, _ = camera.read_latest() if camera is not None else (None, 0.0)
+                now = time.perf_counter()
+                dt_sec = now - last_tick
+                last_tick = now
+                
+                renderer._update_states()
+                renderer._update_projectiles(dt_sec)
+                renderer._update_effects(dt_sec)
+                
+                render_snapshot = dict(snapshot)
+                render_snapshot["latency_ema_ms"] = latency_ema
+                render_snapshot["ai_priority_state"] = priority_state if ai_priority_mode else "off"
+                render_snapshot["preview_fps"] = current_preview_fps
+                render_snapshot["camera_fps_actual"] = camera.actual_fps() if camera is not None else 0.0
+                render_snapshot["render_fps_actual"] = renderer.render_fps()
+                
+                current_state = {
+                    "player_hp": game.player_hp,
+                    "bot_hp": game.bot_hp,
+                    "cooldown": {
+                        "rasengan": 0.0,
+                        "rasenshuriken": 0.0,
+                        "kage_bunshin": 0.0
+                    },
+                    "rasenshuriken_remaining": 3 - game.rasenshuriken_used_count,
+                    "game_over": game.game_over,
+                    "winner": game.winner,
+                }
+                renderer.draw(current_state, render_snapshot, frame, dt_sec)
+                
+                if now >= game_over_show_overlay_at:
+                    renderer.draw_game_over_overlay(game.winner)
+                
+                continue
 
             state = update_game_state(game, skill, block, dodge)
             event_id = state.get("event_id")
@@ -391,17 +439,7 @@ def run():
             prev_player_hp = state.get("player_hp", prev_player_hp)
             prev_bot_hp = state.get("bot_hp", prev_bot_hp)
 
-            if state.get("game_over"):
-                if state.get("winner") == "player":
-                    renderer.push_log("WIN")
-                    renderer.trigger_state("bot", "dead", 1.2)
-                else:
-                    renderer.push_log("LOSE")
-                    renderer.trigger_state("player", "dead", 1.2)
-                game.reset_game()
-                prev_player_hp = game.player_hp
-                prev_bot_hp = game.bot_hp
-                renderer.push_log("Auto reset.")
+
 
             frame, _ = camera.read_latest() if camera is not None else (None, 0.0)
             now = time.perf_counter()

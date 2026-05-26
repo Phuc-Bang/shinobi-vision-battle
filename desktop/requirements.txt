@@ -1,6 +1,6 @@
 opencv-python
 mediapipe
 numpy
-pygame-ce
+pygame
 absl-py
 pyinstaller

@@ -12,6 +12,9 @@ FRONTEND = ROOT / "frontend" / "assets" / "images"
 RULES = [
     (FRONTEND / "ui", 512),
     (FRONTEND / "projectiles", 512),
+    (FRONTEND / "sprites" / "naruto", 512),
+    (FRONTEND / "sprites" / "mizuki", 512),
+    (FRONTEND / "background", 1280),
 ]
 
 

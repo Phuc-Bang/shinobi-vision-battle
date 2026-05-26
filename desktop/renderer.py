@@ -278,6 +278,32 @@ class DesktopRenderer:
         pygame.display.flip()
         self.clock.tick(60)
 
+    def draw_game_over_overlay(self, winner):
+        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 165))
+        self.screen.blit(overlay, (0, 0))
+
+        if winner == "player":
+            title_text = "VICTORY"
+            title_color = (255, 184, 45)  # Cam vàng hào quang Naruto
+            subtitle_text = "Mizuki has been defeated! Naruto protects the Leaf Village!"
+        else:
+            title_text = "DEFEAT"
+            title_color = (255, 72, 72)   # Đỏ thẫm nguy kịch
+            subtitle_text = "Naruto fell in battle... The Leaf Village is in danger!"
+
+        title = self.title_font.render(title_text, True, title_color)
+        self.screen.blit(title, title.get_rect(center=(self.width // 2, self.height // 2 - 96)))
+
+        sub = self.font.render(subtitle_text, True, (220, 220, 220))
+        self.screen.blit(sub, sub.get_rect(center=(self.width // 2, self.height // 2 - 20)))
+
+        hint = self.small_font.render("Press R to Rematch  |  Press ESC to Menu", True, (160, 170, 190))
+        self.screen.blit(hint, hint.get_rect(center=(self.width // 2, self.height // 2 + 50)))
+
+        pygame.display.flip()
+        self.clock.tick(60)
+
     def _resolve_asset_path(self, rel_path):
         candidates = []
         meipass = getattr(sys, "_MEIPASS", None)
@@ -352,7 +378,7 @@ class DesktopRenderer:
             self._load_image("frontend/assets/images/sprites/naruto/idle.png"), 250
         )
         self.mizuki_idle = self._fit_height(
-            self._load_image("frontend/assets/images/sprites/mizuki/idle.png"), 255
+            self._load_image("frontend/assets/images/sprites/mizuki/idle.png"), 250
         )
         self.proj_images = {
             "rasengan": self._fit_height(
@@ -366,55 +392,59 @@ class DesktopRenderer:
             ),
         }
         self.naruto_attack = self._fit_height(
-            self._load_image("frontend/assets/images/sprites/naruto/rasengan.png"), 260
+            self._load_image("frontend/assets/images/sprites/naruto/rasengan.png"), 250
         )
         self.naruto_rasenshuriken = self._fit_height(
-            self._load_image("frontend/assets/images/sprites/naruto/rasenshuriken.png"), 265
+            self._load_image("frontend/assets/images/sprites/naruto/rasenshuriken.png"), 250
         )
         self.naruto_kage = self._fit_height(
-            self._load_image("frontend/assets/images/sprites/naruto/kagebunshin.png"), 258
+            self._load_image("frontend/assets/images/sprites/naruto/kagebunshin.png"), 250
         )
         self.naruto_block = self._fit_height(
             self._load_image("frontend/assets/images/sprites/naruto/block.png"), 250
         )
         self.naruto_dodge_left = self._fit_height(
-            self._load_image("frontend/assets/images/sprites/naruto/dodge_left.png"), 245
+            self._load_image("frontend/assets/images/sprites/naruto/dodge_left.png"), 250
         )
         self.naruto_dodge_right = self._fit_height(
-            self._load_image("frontend/assets/images/sprites/naruto/dodge_right.png"), 245
+            self._load_image("frontend/assets/images/sprites/naruto/dodge_right.png"), 250
         )
         self.naruto_hurt = self._fit_height(
             self._load_image("frontend/assets/images/sprites/naruto/hurt.png"), 250
         )
         self.naruto_dead = self._fit_height(
-            self._load_image("frontend/assets/images/sprites/naruto/dead.png"), 235
+            self._load_image("frontend/assets/images/sprites/naruto/dead.png"), 250
         )
         self.mizuki_attack = self._fit_height(
-            self._load_image("frontend/assets/images/sprites/mizuki/throw_kunai.png"), 265
+            self._load_image("frontend/assets/images/sprites/mizuki/throw_kunai.png"), 250
         )
         self.mizuki_hurt = self._fit_height(
-            self._load_image("frontend/assets/images/sprites/mizuki/hurt.png"), 255
+            self._load_image("frontend/assets/images/sprites/mizuki/hurt.png"), 250
         )
         self.mizuki_dead = self._fit_height(
-            self._load_image("frontend/assets/images/sprites/mizuki/dead.png"), 240
+            self._load_image("frontend/assets/images/sprites/mizuki/dead.png"), 250
         )
 
     def trigger_projectile(self, kind):
         kind = (kind or "").lower()
         if kind not in ("rasengan", "rasenshuriken", "kunai"):
             return
+        floor_y = self.scene_rect.bottom - int(55 * self.ui_scale)
         if kind == "kunai":
-            start_x, end_x = self.scene_rect.right - 170, self.scene_rect.left + 210
-            y = self.scene_rect.bottom - 250
-            speed = -720
+            start_x = self.scene_rect.right - int(170 * self.ui_scale)
+            end_x = self.scene_rect.left + int(210 * self.ui_scale)
+            y = floor_y - int(115 * self.ui_scale)
+            speed = -720 * self.ui_scale
         elif kind == "rasenshuriken":
-            start_x, end_x = self.scene_rect.left + 200, self.scene_rect.right - 230
-            y = self.scene_rect.bottom - 250
-            speed = 540
+            start_x = self.scene_rect.left + int(200 * self.ui_scale)
+            end_x = self.scene_rect.right - int(230 * self.ui_scale)
+            y = floor_y - int(110 * self.ui_scale)
+            speed = 540 * self.ui_scale
         else:
-            start_x, end_x = self.scene_rect.left + 200, self.scene_rect.right - 230
-            y = self.scene_rect.bottom - 245
-            speed = 670
+            start_x = self.scene_rect.left + int(200 * self.ui_scale)
+            end_x = self.scene_rect.right - int(230 * self.ui_scale)
+            y = floor_y - int(105 * self.ui_scale)
+            speed = 670 * self.ui_scale
         self.projectiles.append(
             {
                 "kind": kind,
@@ -437,12 +467,13 @@ class DesktopRenderer:
     def trigger_damage(self, fighter, amount):
         if amount <= 0:
             return
+        floor_y = self.scene_rect.bottom - int(55 * self.ui_scale)
         if fighter == "player":
-            x = self.scene_rect.left + 210
-            y = self.scene_rect.bottom - 290
+            x = self.scene_rect.left + int(210 * self.ui_scale)
+            y = floor_y - int(235 * self.ui_scale)
         else:
-            x = self.scene_rect.right - 220
-            y = self.scene_rect.bottom - 290
+            x = self.scene_rect.right - int(220 * self.ui_scale)
+            y = floor_y - int(235 * self.ui_scale)
         self.damage_texts.append(
             {"text": f"-{amount}", "x": float(x), "y": float(y), "life": 0.9}
         )
@@ -497,8 +528,32 @@ class DesktopRenderer:
         self.screen.blit(bg, self.scene_rect.topleft)
         pygame.draw.rect(self.screen, (255, 166, 42), self.scene_rect, width=2, border_radius=8)
 
+    def _get_bottom_padding(self, surface):
+        if surface is None:
+            return 0
+        w, h = surface.get_size()
+        for y in range(h - 1, -1, -1):
+            for x in range(0, w, 4):  # Bước nhảy 4px để quét cực nhanh
+                if surface.get_at((x, y))[3] > 120:  # Ngưỡng > 120 tránh nhiễu khử răng cưa
+                    return (h - 1) - y
+        return 0
+
+    def _get_horizontal_pads(self, surface):
+        if surface is None:
+            return 0, 0
+        w, h = surface.get_size()
+        min_x, max_x = w, 0
+        for y in range(0, h, 2):  # Bước nhảy 2px quét cực nhanh
+            for x in range(0, w, 4):
+                if surface.get_at((x, y))[3] > 120:  # Tránh nhiễu biên
+                    if x < min_x: min_x = x
+                    if x > max_x: max_x = x
+        if min_x >= max_x:
+            return 0, 0
+        return min_x, (w - 1) - max_x
+
     def _draw_fighters(self):
-        floor_y = self.scene_rect.bottom - 55
+        floor_y = self.scene_rect.bottom - int(55 * self.ui_scale)
         n = self.naruto_idle
         if self.player_state == "dead" and self.naruto_dead is not None:
             n = self.naruto_dead
@@ -516,8 +571,30 @@ class DesktopRenderer:
             n = self.naruto_attack
         elif self.player_state == "hurt" and self.naruto_hurt is not None:
             n = self.naruto_hurt
+            
+        # Naruto (bên trái) luôn cần hướng sang PHẢI:
+        # Lật ngang các trạng thái có ảnh gốc hướng trái: idle, kage_bunshin, block, rasenshuriken
+        # Giữ nguyên các trạng thái có ảnh gốc hướng phải: dead, dodge_left, dodge_right, attack, hurt
+        should_flip_player = self.player_state in ("idle", "kage_bunshin", "block", "rasenshuriken")
         if n is not None:
-            self.screen.blit(n, (self.scene_rect.left + 110, floor_y - n.get_height()))
+            if should_flip_player:
+                n = pygame.transform.flip(n, True, False)
+            
+            # Cân chỉnh kích thước theo ui_scale
+            target_h = int(250 * self.ui_scale)
+            target_w = int(n.get_width() * (target_h / n.get_height()))
+            n = pygame.transform.smoothscale(n, (target_w, target_h))
+            
+            # Cân chỉnh động khoảng trống trong suốt ở bàn chân và căn biên ngang đối xứng
+            pad_y = self._get_bottom_padding(n)
+            pad_left, pad_right = self._get_horizontal_pads(n)
+            
+            # Căn lề trái đối xứng theo khung hình (khoảng 90px)
+            player_margin = int(90 * self.ui_scale)
+            draw_x = self.scene_rect.left + player_margin - pad_left
+            draw_y = floor_y - n.get_height() + pad_y
+            self.screen.blit(n, (draw_x, draw_y))
+            
         m = self.mizuki_idle
         if self.bot_state == "dead" and self.mizuki_dead is not None:
             m = self.mizuki_dead
@@ -525,9 +602,28 @@ class DesktopRenderer:
             m = self.mizuki_attack
         elif self.bot_state == "hurt" and self.mizuki_hurt is not None:
             m = self.mizuki_hurt
+            
+        # Mizuki (bên phải) luôn cần hướng sang TRÁI:
+        # Giữ nguyên trạng thái có ảnh gốc hướng trái: idle
+        # Lật ngang các trạng thái có ảnh gốc hướng phải: dead, attack (throw_kunai), hurt
+        should_flip_bot = self.bot_state in ("dead", "attack", "hurt")
         if m is not None:
-            m = pygame.transform.flip(m, True, False)
-            self.screen.blit(m, (self.scene_rect.right - 290, floor_y - m.get_height()))
+            if should_flip_bot:
+                m = pygame.transform.flip(m, True, False)
+                
+            # Cân chỉnh kích thước theo ui_scale
+            target_h = int(250 * self.ui_scale)
+            target_w = int(m.get_width() * (target_h / m.get_height()))
+            m = pygame.transform.smoothscale(m, (target_w, target_h))
+            
+            pad_y = self._get_bottom_padding(m)
+            pad_left, pad_right = self._get_horizontal_pads(m)
+            
+            # Căn lề phải đối xứng theo khung hình (khoảng 90px)
+            bot_margin = int(90 * self.ui_scale)
+            draw_x = self.scene_rect.right - bot_margin - m.get_width() + pad_right
+            draw_y = floor_y - m.get_height() + pad_y
+            self.screen.blit(m, (draw_x, draw_y))
 
     def _update_projectiles(self, dt_sec):
         for p in self.projectiles:
@@ -571,13 +667,15 @@ class DesktopRenderer:
     def _draw_hit_flashes(self):
         for flash in self.hit_flashes:
             alpha = max(0, min(180, int(180 * flash["life"] / 0.18)))
-            surf = pygame.Surface((220, 280), pygame.SRCALPHA)
+            w = int(220 * self.ui_scale)
+            h = int(280 * self.ui_scale)
+            surf = pygame.Surface((w, h), pygame.SRCALPHA)
             surf.fill((255, 100, 100, alpha))
             if flash["fighter"] == "player":
-                x = self.scene_rect.left + 110
+                x = self.scene_rect.left + int(110 * self.ui_scale)
             else:
-                x = self.scene_rect.right - 330
-            y = self.scene_rect.bottom - 340
+                x = self.scene_rect.right - int(330 * self.ui_scale)
+            y = self.scene_rect.bottom - int(340 * self.ui_scale)
             self.screen.blit(surf, (x, y))
 
     def _draw_title(self):
