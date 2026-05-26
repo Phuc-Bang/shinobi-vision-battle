@@ -216,6 +216,11 @@ def run():
                 if event.type == pygame.QUIT:
                     running = False
                     break
+                if event.type == pygame.MOUSEBUTTONDOWN and in_intro:
+                    in_intro = False
+                    in_menu = True
+                    renderer.push_log("Entered menu.")
+                    continue
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_F11:
                         if not is_fullscreen:
@@ -234,10 +239,9 @@ def run():
                         if event.key == pygame.K_ESCAPE:
                             running = False
                             break
-                        if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-                            in_intro = False
-                            in_menu = True
-                            renderer.push_log("Entered menu.")
+                        in_intro = False
+                        in_menu = True
+                        renderer.push_log("Entered menu.")
                         continue
 
                     if in_menu:
@@ -338,6 +342,18 @@ def run():
                     elif hasattr(renderer, "_menu_char_sasuke_rect") and renderer._menu_char_sasuke_rect.collidepoint(event.pos):
                         game.selected_char = "sasuke"
                         renderer.push_log("Selected Sasuke.")
+                    elif hasattr(renderer, "_menu_stage_1_rect") and renderer._menu_stage_1_rect.collidepoint(event.pos):
+                        game.campaign_stage = 1
+                        game.reset_game()
+                        renderer.push_log("Selected Stage 1.")
+                    elif hasattr(renderer, "_menu_stage_2_rect") and renderer._menu_stage_2_rect.collidepoint(event.pos):
+                        game.campaign_stage = 2
+                        game.reset_game()
+                        renderer.push_log("Selected Stage 2.")
+                    elif hasattr(renderer, "_menu_stage_3_rect") and renderer._menu_stage_3_rect.collidepoint(event.pos):
+                        game.campaign_stage = 3
+                        game.reset_game()
+                        renderer.push_log("Selected Stage 3.")
                     elif controls["perf_prev"].collidepoint(event.pos):
                         perf_index = (perf_index - 1) % len(perf_order)
                         apply_performance_preset()

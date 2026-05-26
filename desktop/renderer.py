@@ -62,6 +62,9 @@ class DesktopRenderer:
         self.selected_char = "naruto"
         self._menu_char_naruto_rect = pygame.Rect(0, 0, 0, 0)
         self._menu_char_sasuke_rect = pygame.Rect(0, 0, 0, 0)
+        self._menu_stage_1_rect = pygame.Rect(0, 0, 0, 0)
+        self._menu_stage_2_rect = pygame.Rect(0, 0, 0, 0)
+        self._menu_stage_3_rect = pygame.Rect(0, 0, 0, 0)
         self._menu_start_rect = None
         self._menu_quit_rect = None
         self._menu_controls = None
@@ -128,7 +131,7 @@ class DesktopRenderer:
         start_h = int(58 * self.ui_scale)
         quit_h = int(50 * self.ui_scale)
         x = self.width // 2 - bw // 2
-        start_y = panel.y + int(350 * self.ui_scale)
+        start_y = panel.y + int(380 * self.ui_scale)
         start_rect = pygame.Rect(x, start_y, bw, start_h)
         quit_rect = pygame.Rect(x, start_rect.bottom + max(10, int(14 * self.ui_scale)), bw, quit_h)
 
@@ -272,9 +275,33 @@ class DesktopRenderer:
         p2 = self.font.render(bot_name, True, (245, 245, 245))
         self.screen.blit(p2, p2.get_rect(center=(panel.centerx + int(120 * self.ui_scale), panel.y + int(310 * self.ui_scale))))
 
+        # Stage selection buttons
+        stage_y = panel.y + int(326 * self.ui_scale)
+        stage_btn_w = int(84 * self.ui_scale)
+        stage_btn_h = int(22 * self.ui_scale)
+        
+        self._menu_stage_1_rect = pygame.Rect(self.width // 2 - int(136 * self.ui_scale), stage_y, stage_btn_w, stage_btn_h)
+        self._menu_stage_2_rect = pygame.Rect(self.width // 2 - int(42 * self.ui_scale), stage_y, stage_btn_w, stage_btn_h)
+        self._menu_stage_3_rect = pygame.Rect(self.width // 2 + int(52 * self.ui_scale), stage_y, stage_btn_w, stage_btn_h)
+        
+        for i, rect in enumerate([self._menu_stage_1_rect, self._menu_stage_2_rect, self._menu_stage_3_rect], 1):
+            is_hover = rect.collidepoint(mouse)
+            if stage == i:
+                bg_color = (255, 166, 42)
+                border_w = 2
+            else:
+                bg_color = (60, 68, 85) if is_hover else (35, 40, 50)
+                border_w = 1
+            pygame.draw.rect(self.screen, bg_color, rect, border_radius=4)
+            if stage == i or is_hover:
+                pygame.draw.rect(self.screen, (255, 220, 100), rect, width=border_w, border_radius=4)
+                
+            btn_txt = self.small_font.render(f"STAGE {i}", True, (10, 10, 12) if stage == i else (200, 200, 200))
+            self.screen.blit(btn_txt, btn_txt.get_rect(center=rect.center))
+
         desc_font = pygame.font.SysFont("consolas", max(11, int(14 * self.ui_scale)), italic=True)
-        desc_t = desc_font.render(f"STAGE {stage}: {desc}", True, (255, 184, 45))
-        self.screen.blit(desc_t, desc_t.get_rect(center=(self.width // 2, panel.y + int(330 * self.ui_scale))))
+        desc_t = desc_font.render(desc, True, (255, 184, 45))
+        self.screen.blit(desc_t, desc_t.get_rect(center=(self.width // 2, panel.y + int(358 * self.ui_scale))))
 
         mouse = pygame.mouse.get_pos()
         start_bg = (255, 186, 68) if start_rect.collidepoint(mouse) else (255, 166, 42)
