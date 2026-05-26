@@ -502,9 +502,10 @@ class DesktopRenderer:
         self._draw_hit_flashes()
         self._draw_damage_texts()
         self._draw_title()
-        self._draw_hp(game_state)
-        self._draw_status(input_snapshot)
-        self._draw_logs()
+        start_y = self.hud_rect.y + 12 + self.font.get_height() + int(12 * self.ui_scale)
+        next_y = self._draw_hp(game_state, start_y)
+        next_y = self._draw_status(input_snapshot, next_y)
+        self._draw_logs(next_y)
         self._draw_controls_panel()
         if self.show_preview:
             self._draw_preview(latest_frame, input_snapshot.get("landmarks", {}))
@@ -714,42 +715,71 @@ class DesktopRenderer:
 
     def _draw_title(self):
         text = self.font.render("SHINOBI BATTLE (Desktop Local)", True, (255, 184, 45))
-        self.screen.blit(text, (self.hud_rect.x + 20, self.hud_rect.y + 12))
+        self.screen.blit(text, (self.hud_rect.x + int(20 * self.ui_scale), self.hud_rect.y + int(12 * self.ui_scale)))
 
     def _draw_hp_bar(self, x, y, hp, color):
         hp = max(0, min(100, int(hp)))
-        pygame.draw.rect(self.screen, (58, 58, 58), (x, y, 300, 24), border_radius=12)
-        pygame.draw.rect(self.screen, color, (x, y, int(300 * hp / 100), 24), border_radius=12)
+        bar_w = self.hud_rect.width - int(40 * self.ui_scale)
+        bar_h = max(14, int(24 * self.ui_scale))
+        pygame.draw.rect(self.screen, (58, 58, 58), (x, y, bar_w, bar_h), border_radius=int(bar_h // 2))
+        if hp > 0:
+            pygame.draw.rect(self.screen, color, (x, y, int(bar_w * hp / 100), bar_h), border_radius=int(bar_h // 2))
         txt = self.small_font.render(f"{hp}/100", True, (240, 240, 240))
-        self.screen.blit(txt, (x + 130, y + 3))
+        txt_rect = txt.get_rect(center=(x + bar_w // 2, y + bar_h // 2))
+        self.screen.blit(txt, txt_rect)
 
     def _draw_chakra_bar(self, x, y, chakra, color):
         chakra = max(0, min(100, int(chakra)))
-        pygame.draw.rect(self.screen, (58, 58, 58), (x, y, 300, 14), border_radius=7)
-        pygame.draw.rect(self.screen, color, (x, y, int(300 * chakra / 100), 14), border_radius=7)
+        bar_w = self.hud_rect.width - int(40 * self.ui_scale)
+        bar_h = max(10, int(18 * self.ui_scale))
+        pygame.draw.rect(self.screen, (58, 58, 58), (x, y, bar_w, bar_h), border_radius=int(bar_h // 2))
+        if chakra > 0:
+            pygame.draw.rect(self.screen, color, (x, y, int(bar_w * chakra / 100), bar_h), border_radius=int(bar_h // 2))
         txt = self.small_font.render(f"Chakra: {chakra}/100", True, (240, 240, 240))
-        self.screen.blit(txt, (x + 95, y - 2))
+        txt_rect = txt.get_rect(center=(x + bar_w // 2, y + bar_h // 2))
+        self.screen.blit(txt, txt_rect)
 
-    def _draw_hp(self, state):
+    def _draw_hp(self, state, start_y):
         player_hp = state.get("player_hp", 100)
         bot_hp = state.get("bot_hp", 100)
         player_chakra = state.get("player_chakra", 50)
         p = self.font.render("NARUTO", True, (230, 230, 230))
         b = self.font.render("MIZUKI", True, (230, 230, 230))
-        x = self.hud_rect.x + 20
-        y = self.hud_rect.y + 58
+        x = self.hud_rect.x + int(20 * self.ui_scale)
+        y = start_y
+        
+        avatar_size = max(32, int(54 * self.ui_scale))
+        
+        # Vẽ Naruto
         if self.avatar_naruto is not None:
-            self.screen.blit(self.avatar_naruto, (x, y))
+            av_scaled = pygame.transform.smoothscale(self.avatar_naruto, (avatar_size, avatar_size))
+            self.screen.blit(av_scaled, (x, y))
+        p_rect = p.get_rect(left=x + avatar_size + int(12 * self.ui_scale), centery=y + avatar_size // 2)
+        self.screen.blit(p, p_rect)
+        
+        hp_y = y + avatar_size + int(8 * self.ui_scale)
+        self._draw_hp_bar(x, hp_y, player_hp, (52, 245, 36))
+        
+        chakra_y = hp_y + max(14, int(24 * self.ui_scale)) + int(6 * self.ui_scale)
+        self._draw_chakra_bar(x, chakra_y, player_chakra, (38, 145, 255))
+        
+        # Di chuyển tới Mizuki
+        y = chakra_y + max(10, int(18 * self.ui_scale)) + int(16 * self.ui_scale)
         if self.avatar_mizuki is not None:
-            self.screen.blit(self.avatar_mizuki, (x, y + int(112 * self.ui_scale)))
-        self.screen.blit(p, (x + int(66 * self.ui_scale), y + int(12 * self.ui_scale)))
-        self._draw_hp_bar(x, y + int(44 * self.ui_scale), player_hp, (52, 245, 36))
-        self._draw_chakra_bar(x, y + int(76 * self.ui_scale), player_chakra, (38, 145, 255))
-        self.screen.blit(b, (x + int(66 * self.ui_scale), y + int(124 * self.ui_scale)))
-        self._draw_hp_bar(x, y + int(156 * self.ui_scale), bot_hp, (255, 48, 88))
-        self._draw_skill_icons(state)
+            av_scaled = pygame.transform.smoothscale(self.avatar_mizuki, (avatar_size, avatar_size))
+            self.screen.blit(av_scaled, (x, y))
+        b_rect = b.get_rect(left=x + avatar_size + int(12 * self.ui_scale), centery=y + avatar_size // 2)
+        self.screen.blit(b, b_rect)
+        
+        hp_y_bot = y + avatar_size + int(8 * self.ui_scale)
+        self._draw_hp_bar(x, hp_y_bot, bot_hp, (255, 48, 88))
+        
+        # Di chuyển tới Skill Icons
+        skills_start_y = hp_y_bot + max(14, int(24 * self.ui_scale)) + int(20 * self.ui_scale)
+        next_y = self._draw_skill_icons(state, skills_start_y)
+        return next_y
 
-    def _draw_skill_icons(self, state):
+    def _draw_skill_icons(self, state, start_y):
         cooldowns = state.get("cooldown", {})
         remaining = state.get("rasenshuriken_remaining", 3)
         skills = [
@@ -757,31 +787,60 @@ class DesktopRenderer:
             ("rasengan", "Rasengan", 1),
             ("rasenshuriken", "Shuriken", 2),
         ]
-        base_x = self.hud_rect.x + 20
-        y = self.hud_rect.y + int(226 * self.ui_scale)
-        step = int(115 * self.ui_scale)
+        base_x = self.hud_rect.x + int(20 * self.ui_scale)
+        y = start_y
+        
+        icon_size = max(32, int(54 * self.ui_scale))
+        circle_radius = int(icon_size // 2 + 4 * self.ui_scale)
+        circle_center = icon_size // 2
+        
+        available_w = self.hud_rect.width - int(40 * self.ui_scale)
+        if available_w > icon_size:
+            step = (available_w - icon_size) // 2
+        else:
+            step = int(100 * self.ui_scale)
+            
         for key, label, idx in skills:
             x = base_x + idx * step
             icon = self.skill_icons.get(key)
-            pygame.draw.circle(self.screen, (255, 166, 42), (x + 29, y + 29), 34, width=2)
+            
+            # Background/border circle
+            pygame.draw.circle(
+                self.screen,
+                (255, 166, 42),
+                (x + circle_center, y + circle_center),
+                circle_radius,
+                width=max(1, int(2 * self.ui_scale))
+            )
+            
             if icon is not None:
-                self.screen.blit(icon, (x, y))
+                icon_scaled = pygame.transform.smoothscale(icon, (icon_size, icon_size))
+                self.screen.blit(icon_scaled, (x, y))
+                
             cd = float(cooldowns.get(key, 0) or 0)
             if cd > 0:
-                overlay = pygame.Surface((58, 58), pygame.SRCALPHA)
-                overlay.fill((0, 0, 0, 150))
+                overlay = pygame.Surface((icon_size, icon_size), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 160))
                 self.screen.blit(overlay, (x, y))
-                t = self.font.render(f"{cd:.1f}", True, (245, 245, 245))
-                self.screen.blit(t, (x + 10, y + 17))
+                t = self.font.render(f"{cd:.1f}", True, (255, 255, 255))
+                t_rect = t.get_rect(center=(x + circle_center, y + circle_center))
+                self.screen.blit(t, t_rect)
+                
             name = self.small_font.render(label, True, (230, 230, 230))
-            self.screen.blit(name, (x, y + 68))
+            name_rect = name.get_rect(centerx=x + circle_center, top=y + icon_size + int(8 * self.ui_scale))
+            self.screen.blit(name, name_rect)
+            
             if key == "rasenshuriken":
                 stock = self.small_font.render(f"{remaining}/3", True, (255, 166, 42))
-                self.screen.blit(stock, (x + 12, y + 88))
+                stock_rect = stock.get_rect(centerx=x + circle_center, top=y + icon_size + int(24 * self.ui_scale))
+                self.screen.blit(stock, stock_rect)
+                
+        max_text_h = int(24 * self.ui_scale) + self.small_font.get_height()
+        return y + icon_size + max_text_h + int(16 * self.ui_scale)
 
-    def _draw_status(self, snapshot):
-        y = self.hud_rect.y + int(328 * self.ui_scale)
-        x = self.hud_rect.x + 20
+    def _draw_status(self, snapshot, start_y):
+        y = start_y
+        x = self.hud_rect.x + int(20 * self.ui_scale)
         latency_ema = float(snapshot.get("latency_ema_ms", snapshot.get("latency_ms", 0.0)))
         latency_avg = float(snapshot.get("latency_avg_ms", 0.0))
         latency_p95 = float(snapshot.get("latency_p95_ms", 0.0))
@@ -802,28 +861,32 @@ class DesktopRenderer:
             f"Preview: {'ON' if self.show_preview else 'OFF'} (P) - {preview_runtime_fps} FPS",
             f"Skeleton: {'ON' if self.show_skeleton else 'OFF'} (H)",
         ]
+        line_height = max(14, int(18 * self.ui_scale))
         for line in items:
             t = self.small_font.render(line, True, (188, 198, 216))
             self.screen.blit(t, (x, y))
-            y += max(18, int(26 * self.ui_scale))
+            y += line_height
         self._status_bottom_y = y
+        return y
 
-    def _draw_logs(self):
-        y = max(self.hud_rect.y + int(566 * self.ui_scale), self._status_bottom_y + max(8, int(10 * self.ui_scale)))
-        x = self.hud_rect.x + 20
+    def _draw_logs(self, start_y):
+        y = start_y + int(8 * self.ui_scale)
+        x = self.hud_rect.x + int(20 * self.ui_scale)
         title = self.font.render("BATTLE LOG", True, (255, 184, 45))
         self.screen.blit(title, (x, y))
-        y += 30
-        area_h = max(80, self.hud_rect.bottom - y - 14)
-        area_w = max(120, self.hud_rect.width - 20)
+        y += title.get_height() + int(6 * self.ui_scale)
+        
+        area_h = max(60, self.hud_rect.bottom - y - int(14 * self.ui_scale))
+        area_w = max(120, self.hud_rect.width - int(40 * self.ui_scale))
         log_area = pygame.Rect(x, y, area_w, area_h)
+        
         old_clip = self.screen.get_clip()
         self.screen.set_clip(log_area)
         wrapped_lines = []
         max_line_w = log_area.width - 6
         for line in self.logs[-8:]:
             wrapped_lines.extend(self._wrap_text(line, max_line_w))
-        line_h = max(16, self.small_font.get_height() + 2)
+        line_h = max(12, self.small_font.get_height() + 2)
         max_lines = max(1, log_area.height // line_h)
         visible = wrapped_lines[-max_lines:]
         draw_y = y
@@ -850,9 +913,9 @@ class DesktopRenderer:
         return lines
 
     def _draw_controls_panel(self):
-        x, y, _, _ = self.controls_rect
+        x, y, w, h = self.controls_rect
         title = self.font.render("KEYBOARD CONTROLS", True, (255, 184, 45))
-        self.screen.blit(title, (x + 14, y + 10))
+        self.screen.blit(title, (x + int(14 * self.ui_scale), y + int(10 * self.ui_scale)))
         lines = [
             "1: Kage Bunshin",
             "2: Rasengan",
@@ -862,17 +925,24 @@ class DesktopRenderer:
             "P: Preview  SPACE: Pause",
             "ESC: Quit",
         ]
-        line_y = y + 44
+        available_h = h - int(44 * self.ui_scale) - int(10 * self.ui_scale)
+        if len(lines) > 0:
+            line_step = max(12, available_h // len(lines))
+        else:
+            line_step = int(16 * self.ui_scale)
+            
+        line_y = y + int(40 * self.ui_scale)
         for line in lines:
             t = self.small_font.render(line, True, (205, 214, 228))
-            self.screen.blit(t, (x + 16, line_y))
-            line_y += 16
+            self.screen.blit(t, (x + int(16 * self.ui_scale), line_y))
+            line_y += line_step
 
     def _draw_preview_off_panel(self):
         title = self.font.render("CAM PREVIEW", True, (255, 184, 45))
-        self.screen.blit(title, (self.preview_rect.x + 12, self.preview_rect.y + 10))
+        self.screen.blit(title, (self.preview_rect.x + int(12 * self.ui_scale), self.preview_rect.y + int(10 * self.ui_scale)))
         t = self.small_font.render("Preview OFF (press P to show)", True, (220, 120, 120))
-        self.screen.blit(t, (self.preview_rect.x + 12, self.preview_rect.y + 70))
+        t_rect = t.get_rect(center=(self.preview_rect.centerx, self.preview_rect.y + self.preview_rect.height // 2 + int(10 * self.ui_scale)))
+        self.screen.blit(t, t_rect)
 
     def _draw_preview(self, frame, landmarks):
         title = self.font.render("CAM PREVIEW", True, (255, 184, 45))
