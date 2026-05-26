@@ -20,6 +20,7 @@ class GameState:
         self.last_update_time = time.time()
         self.player_buff_end_time = None
         self.player_damage_multiplier = 1.0
+        self.player_block_duration = 0.0
 
         # Thời điểm dùng skill lần cuối (0 nghĩa là chưa dùng)
         self.last_skill_time = {
@@ -128,7 +129,7 @@ class GameState:
 
     def apply_bot_attack(self, is_blocking, dodge_dir, is_charging=False):
         """Xử lý Boss Mizuki ném phi tiêu tấn công tự động."""
-        result = {"damage_dealt": 0, "message": "", "action": None, "hit": False}
+        result = {"damage_dealt": 0, "message": "", "action": None, "hit": False, "player_action": None}
         now = time.time()
         
         if self.game_over or now < self.next_bot_attack_time:
@@ -143,12 +144,23 @@ class GameState:
         
         # Kiểm tra người chơi có đang phòng thủ, sạc hay né không
         if is_blocking:
-            # Block giảm 70% sát thương, vẫn nhận 30%
-            reduced = max(1, int(bot_damage * 0.3))
-            self.player_hp = max(0, self.player_hp - reduced)
-            result["damage_dealt"] = reduced
-            result["hit"] = True
-            result["message"] = f"🛡️ Đỡ được Kunai! Nhận {reduced} sát thương (giảm 70%)."
+            # Nếu người chơi bắt đầu Block trong vòng 0.22s -> Perfect Block / Thế Thân gỗ (Kawarimi)!
+            if self.player_block_duration <= 0.22:
+                result["damage_dealt"] = 0
+                result["hit"] = False
+                result["player_action"] = "kawarimi"
+                result["message"] = "🪵 THẾ THÂN CHI THUẬT! Né đòn bằng khúc gỗ thế mạng!"
+                # Choáng đối thủ: Mizuki không thể tấn công trong 3.5 giây tiếp theo!
+                self.next_bot_attack_time = now + 3.5
+                # Thưởng năng lượng: hồi phục +15 Chakra!
+                self.player_chakra = min(self.max_chakra, self.player_chakra + 15.0)
+            else:
+                # Block thường giảm 70% sát thương, vẫn nhận 30%
+                reduced = max(1, int(bot_damage * 0.3))
+                self.player_hp = max(0, self.player_hp - reduced)
+                result["damage_dealt"] = reduced
+                result["hit"] = True
+                result["message"] = f"🛡️ Đỡ được Kunai! Nhận {reduced} sát thương (giảm 70%)."
         elif is_charging:
             # Sạc Chakra giảm 50% sát thương, vẫn nhận 50%
             reduced = max(1, int(bot_damage * 0.5))
@@ -200,6 +212,12 @@ def update_game_state(game, player_skill, is_blocking, dodge_dir):
     dt = max(0.001, min(now - game.last_update_time, 1.0))
     game.last_update_time = now
     
+    # Cập nhật thời gian giữ Block
+    if is_blocking:
+        game.player_block_duration += dt
+    else:
+        game.player_block_duration = 0.0
+
     # 1. Cập nhật Buff
     game.update_buff()
     
@@ -240,7 +258,7 @@ def update_game_state(game, player_skill, is_blocking, dodge_dir):
         "event_id": event_id,
         "last_message": last_message,
         "story_message": story_msg,
-        "player_action": skill_res.get("action"),
+        "player_action": skill_res.get("action") or bot_res.get("player_action"),
         "player_hit": skill_res.get("hit", False),
         "player_damage_dealt": skill_res.get("damage_dealt", 0),
         "bot_action": bot_res.get("action"),

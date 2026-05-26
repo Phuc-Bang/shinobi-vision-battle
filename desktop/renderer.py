@@ -52,6 +52,9 @@ class DesktopRenderer:
         self.bot_state = "idle"
         self.player_state_until = 0.0
         self.bot_state_until = 0.0
+        self.shake_timer = 0.0
+        self.shake_duration = 0.0
+        self.shake_intensity = 0.0
         self._load_assets()
         self._status_bottom_y = self.hud_rect.y + 560
         self._menu_start_rect = None
@@ -425,6 +428,9 @@ class DesktopRenderer:
         self.mizuki_dead = self._fit_height(
             self._load_image("frontend/assets/images/sprites/mizuki/dead.png"), 250
         )
+        self.kawarimi_log = self._fit_height(
+            self._load_image("frontend/assets/images/sprites/naruto/kawarimi_log.png"), 150
+        )
 
     def trigger_projectile(self, kind):
         kind = (kind or "").lower()
@@ -523,12 +529,16 @@ class DesktopRenderer:
             self.bot_state = "idle"
 
     def _draw_scene_background(self):
+        offset_x, offset_y = self._get_shake_offset()
+        rect = self.scene_rect.copy()
+        rect.x += offset_x
+        rect.y += offset_y
         if self.bg is None:
-            pygame.draw.rect(self.screen, (35, 38, 48), self.scene_rect, border_radius=8)
+            pygame.draw.rect(self.screen, (35, 38, 48), rect, border_radius=8)
             return
-        bg = pygame.transform.smoothscale(self.bg, self.scene_rect.size)
-        self.screen.blit(bg, self.scene_rect.topleft)
-        pygame.draw.rect(self.screen, (255, 166, 42), self.scene_rect, width=2, border_radius=8)
+        bg = pygame.transform.smoothscale(self.bg, rect.size)
+        self.screen.blit(bg, rect.topleft)
+        pygame.draw.rect(self.screen, (255, 166, 42), rect, width=2, border_radius=8)
 
     def _get_bottom_padding(self, surface):
         if surface is None:
@@ -555,6 +565,7 @@ class DesktopRenderer:
         return min_x, (w - 1) - max_x
 
     def _draw_fighters(self):
+        offset_x, offset_y = self._get_shake_offset()
         floor_y = self.scene_rect.bottom - int(55 * self.ui_scale)
         n = self.naruto_idle
         if self.player_state == "dead" and self.naruto_dead is not None:
@@ -575,17 +586,22 @@ class DesktopRenderer:
             n = self.naruto_attack
         elif self.player_state == "hurt" and self.naruto_hurt is not None:
             n = self.naruto_hurt
+        elif self.player_state == "kawarimi" and self.kawarimi_log is not None:
+            n = self.kawarimi_log
             
         # Naruto (bên trái) luôn cần hướng sang PHẢI:
         # Lật ngang các trạng thái có ảnh gốc hướng trái: idle, kage_bunshin, block, rasenshuriken, charge
-        # Giữ nguyên các trạng thái có ảnh gốc hướng phải: dead, dodge_left, dodge_right, attack, hurt
+        # Giữ nguyên các trạng thái có ảnh gốc hướng phải: dead, dodge_left, dodge_right, attack, hurt, kawarimi
         should_flip_player = self.player_state in ("idle", "kage_bunshin", "block", "rasenshuriken", "charge")
         if n is not None:
             if should_flip_player:
                 n = pygame.transform.flip(n, True, False)
             
-            # Cân chỉnh kích thước theo ui_scale
-            target_h = int(250 * self.ui_scale)
+            # Cân chỉnh kích thước theo ui_scale (Khúc gỗ Kawarimi nhỏ hơn)
+            if self.player_state == "kawarimi":
+                target_h = int(150 * self.ui_scale)
+            else:
+                target_h = int(250 * self.ui_scale)
             target_w = int(n.get_width() * (target_h / n.get_height()))
             n = pygame.transform.smoothscale(n, (target_w, target_h))
             
@@ -616,14 +632,14 @@ class DesktopRenderer:
             
             # Vẽ các hạt Chakra trước khi vẽ nhân vật (hiệu ứng nền) hoặc sau nhân vật?
             # Vẽ đằng trước nhân vật để hạt bao quanh người!
-            self.screen.blit(n, (draw_x, draw_y))
+            self.screen.blit(n, (draw_x + offset_x, draw_y + offset_y))
 
             # Vẽ các hạt Chakra (độ trong suốt qua SURFACE ALPHA)
             for p in self.chakra_particles:
                 alpha = max(0, min(255, int(255 * p["life"])))
                 surf = pygame.Surface((int(p["r"] * 2), int(p["r"] * 2)), pygame.SRCALPHA)
                 pygame.draw.circle(surf, (38, 145, 255, alpha), (int(p["r"]), int(p["r"])), int(p["r"]))
-                self.screen.blit(surf, (int(p["x"] - p["r"]), int(p["y"] - p["r"])))
+                self.screen.blit(surf, (int(p["x"] - p["r"]) + offset_x, int(p["y"] - p["r"]) + offset_y))
             
         m = self.mizuki_idle
         if self.bot_state == "dead" and self.mizuki_dead is not None:
@@ -653,7 +669,7 @@ class DesktopRenderer:
             bot_margin = int(90 * self.ui_scale)
             draw_x = self.scene_rect.right - bot_margin - m.get_width() + pad_right
             draw_y = floor_y - m.get_height() + pad_y
-            self.screen.blit(m, (draw_x, draw_y))
+            self.screen.blit(m, (draw_x + offset_x, draw_y + offset_y))
 
     def _update_projectiles(self, dt_sec):
         for p in self.projectiles:
@@ -664,20 +680,26 @@ class DesktopRenderer:
         ]
 
     def _draw_projectiles(self):
+        offset_x, offset_y = self._get_shake_offset()
         for p in self.projectiles:
             img = self.proj_images.get(p["kind"])
             if img is not None:
                 draw_img = img
                 if p["vx"] < 0:
                     draw_img = pygame.transform.flip(draw_img, True, False)
-                x = int(p["x"] - draw_img.get_width() / 2)
-                y = int(p["y"] - draw_img.get_height() / 2)
+                x = int(p["x"] - draw_img.get_width() / 2) + offset_x
+                y = int(p["y"] - draw_img.get_height() / 2) + offset_y
                 self.screen.blit(draw_img, (x, y))
             else:
                 color = (38, 179, 255) if p["kind"] != "kunai" else (255, 190, 70)
-                pygame.draw.circle(self.screen, color, (int(p["x"]), int(p["y"])), 16)
+                pygame.draw.circle(self.screen, color, (int(p["x"]) + offset_x, int(p["y"]) + offset_y), 16)
 
     def _update_effects(self, dt_sec):
+        if self.shake_timer > 0:
+            self.shake_timer -= dt_sec
+            if self.shake_timer <= 0:
+                self.shake_timer = 0.0
+
         for item in self.damage_texts:
             item["life"] -= dt_sec
             item["y"] -= 72 * dt_sec
@@ -693,13 +715,15 @@ class DesktopRenderer:
         self.chakra_particles = [p for p in self.chakra_particles if p["life"] > 0]
 
     def _draw_damage_texts(self):
+        offset_x, offset_y = self._get_shake_offset()
         for d in self.damage_texts:
             alpha = max(0, min(255, int(255 * d["life"])))
             txt = self.font.render(d["text"], True, (255, 72, 72))
             txt.set_alpha(alpha)
-            self.screen.blit(txt, (int(d["x"]), int(d["y"])))
+            self.screen.blit(txt, (int(d["x"]) + offset_x, int(d["y"]) + offset_y))
 
     def _draw_hit_flashes(self):
+        offset_x, offset_y = self._get_shake_offset()
         for flash in self.hit_flashes:
             alpha = max(0, min(180, int(180 * flash["life"] / 0.18)))
             w = int(220 * self.ui_scale)
@@ -707,11 +731,27 @@ class DesktopRenderer:
             surf = pygame.Surface((w, h), pygame.SRCALPHA)
             surf.fill((255, 100, 100, alpha))
             if flash["fighter"] == "player":
-                x = self.scene_rect.left + int(110 * self.ui_scale)
+                x = self.scene_rect.left + int(110 * self.ui_scale) + offset_x
             else:
-                x = self.scene_rect.right - int(330 * self.ui_scale)
-            y = self.scene_rect.bottom - int(340 * self.ui_scale)
+                x = self.scene_rect.right - int(330 * self.ui_scale) + offset_x
+            y = self.scene_rect.bottom - int(340 * self.ui_scale) + offset_y
             self.screen.blit(surf, (x, y))
+
+    def _get_shake_offset(self):
+        if self.shake_timer <= 0.0:
+            return 0, 0
+        import random
+        t = self.shake_timer / max(0.001, self.shake_duration)
+        eased = t * t
+        current_intensity = self.shake_intensity * eased
+        shake_x = int((random.random() - 0.5) * 2 * current_intensity)
+        shake_y = int((random.random() - 0.5) * 2 * current_intensity)
+        return shake_x, shake_y
+
+    def trigger_shake(self, intensity, duration):
+        self.shake_intensity = intensity * self.ui_scale
+        self.shake_duration = duration
+        self.shake_timer = duration
 
     def _draw_title(self):
         text = self.font.render("SHINOBI BATTLE (Desktop Local)", True, (255, 184, 45))

@@ -425,19 +425,26 @@ def run():
                 if player_action == "rasenshuriken":
                     renderer.trigger_state("player", "rasenshuriken", 0.48)
                     renderer.trigger_projectile(player_action)
+                    renderer.trigger_shake(16.0, 0.4)
                 elif player_action == "rasengan":
                     renderer.trigger_state("player", "attack", 0.36)
                     renderer.trigger_projectile(player_action)
+                    renderer.trigger_shake(10.0, 0.28)
                 elif player_action == "kage_bunshin":
                     renderer.trigger_state("player", "kage_bunshin", 0.55)
+                    renderer.trigger_shake(5.0, 0.15)
                 elif player_action == "charge_chakra":
                     renderer.trigger_state("player", "charge", 0.15)
+                elif player_action == "kawarimi":
+                    renderer.trigger_state("player", "kawarimi", 0.6)
+                    renderer.trigger_shake(12.0, 0.3)
+                
                 if bot_action == "kunai":
                     renderer.trigger_state("bot", "attack", 0.34)
                     renderer.trigger_projectile(bot_action)
                 last_event_id = event_id
 
-            if block:
+            if block and state.get("player_action") != "kawarimi":
                 renderer.trigger_state("player", "block", 0.18)
             elif dodge == "left":
                 renderer.trigger_state("player", "dodge_left", 0.22)
@@ -449,9 +456,11 @@ def run():
             if player_dmg > 0:
                 renderer.trigger_state("player", "hurt", 0.32)
                 renderer.trigger_damage("player", player_dmg)
+                renderer.trigger_shake(8.0, 0.2)
             if bot_dmg > 0:
                 renderer.trigger_state("bot", "hurt", 0.32)
                 renderer.trigger_damage("bot", bot_dmg)
+                renderer.trigger_shake(10.0, 0.22)
             prev_player_hp = state.get("player_hp", prev_player_hp)
             prev_bot_hp = state.get("bot_hp", prev_bot_hp)
 
