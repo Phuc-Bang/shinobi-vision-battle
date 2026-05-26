@@ -376,14 +376,20 @@ def run():
                     if game.winner == "player":
                         renderer.push_log("WIN")
                         renderer.trigger_state("bot", "dead", 1.2)
+                        renderer.trigger_shake(24.0, 0.6)
                     else:
                         renderer.push_log("LOSE")
                         renderer.trigger_state("player", "dead", 1.2)
+                        renderer.trigger_shake(24.0, 0.6)
 
                 frame, _ = camera.read_latest() if camera is not None else (None, 0.0)
                 now = time.perf_counter()
                 dt_sec = now - last_tick
                 last_tick = now
+                
+                ko_cinematic_active = now < game_over_show_overlay_at
+                if ko_cinematic_active:
+                    dt_sec = dt_sec / 5.0
                 
                 renderer._update_states()
                 renderer._update_projectiles(dt_sec)
@@ -407,6 +413,7 @@ def run():
                     "rasenshuriken_remaining": 3 - game.rasenshuriken_used_count,
                     "game_over": game.game_over,
                     "winner": game.winner,
+                    "ko_cinematic": ko_cinematic_active,
                 }
                 renderer.draw(current_state, render_snapshot, frame, dt_sec)
                 

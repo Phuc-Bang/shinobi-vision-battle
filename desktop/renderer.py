@@ -507,6 +507,8 @@ class DesktopRenderer:
         self._draw_projectiles()
         self._draw_hit_flashes()
         self._draw_damage_texts()
+        if game_state.get("game_over") and game_state.get("ko_cinematic"):
+            self._draw_ko_cinematic(game_state.get("winner"))
         self._draw_title()
         start_y = self.hud_rect.y + 12 + self.font.get_height() + int(12 * self.ui_scale)
         next_y = self._draw_hp(game_state, start_y)
@@ -752,6 +754,31 @@ class DesktopRenderer:
         self.shake_intensity = intensity * self.ui_scale
         self.shake_duration = duration
         self.shake_timer = duration
+
+    def _draw_ko_cinematic(self, winner):
+        import math
+        tint_surf = pygame.Surface(self.scene_rect.size, pygame.SRCALPHA)
+        pulse = int(140 + 35 * math.sin(time.perf_counter() * 15))
+        tint_surf.fill((25, 10, 15, pulse))
+        self.screen.blit(tint_surf, self.scene_rect.topleft)
+
+        bar_h = int(44 * self.ui_scale)
+        pygame.draw.rect(self.screen, (10, 10, 12), (self.scene_rect.x, self.scene_rect.y, self.scene_rect.width, bar_h))
+        pygame.draw.rect(self.screen, (10, 10, 12), (self.scene_rect.x, self.scene_rect.bottom - bar_h, self.scene_rect.width, bar_h))
+
+        ko_font = pygame.font.SysFont("impact", max(60, int(110 * self.ui_scale)))
+        ko_shadow = ko_font.render("K.O.", True, (10, 10, 10))
+        ko_text = ko_font.render("K.O.", True, (255, 204, 34))
+        
+        center_x = self.scene_rect.x + self.scene_rect.width // 2
+        center_y = self.scene_rect.y + self.scene_rect.height // 2
+        
+        offset_x, offset_y = self._get_shake_offset()
+        shadow_rect = ko_shadow.get_rect(center=(center_x + 4 + offset_x, center_y + 4 + offset_y))
+        text_rect = ko_text.get_rect(center=(center_x + offset_x, center_y + offset_y))
+        
+        self.screen.blit(ko_shadow, shadow_rect)
+        self.screen.blit(ko_text, text_rect)
 
     def _draw_title(self):
         text = self.font.render("SHINOBI BATTLE (Desktop Local)", True, (255, 184, 45))
