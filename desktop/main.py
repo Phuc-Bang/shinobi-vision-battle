@@ -16,6 +16,7 @@ from desktop.ai_worker import AIWorker
 from desktop.camera import CameraStream
 from desktop.input_state import InputState
 from desktop.renderer import DesktopRenderer
+from desktop.sound import SoundManager
 
 SETTINGS_PATH = os.path.join(ROOT_DIR, "desktop", "settings.json")
 
@@ -120,8 +121,12 @@ def run():
     camera = None
     input_state = InputState()
     ai_worker = None
+    sound = SoundManager()
     renderer = DesktopRenderer(ROOT_DIR, 1280, 720, preview_fps=preview_fps)
     game = GameState()
+    game.selected_char = settings.get("selected_char", "naruto")
+    game.campaign_stage = max(1, min(3, int(settings.get("campaign_stage", 1))))
+    game.reset_game()
 
     def camera_label():
         return f"{cam_width}x{cam_height}@{cam_fps}"
@@ -132,6 +137,8 @@ def run():
                 "performance_preset": perf_order[perf_index],
                 "camera_index": cam_index,
                 "camera_mirror": cam_mirror,
+                "selected_char": game.selected_char,
+                "campaign_stage": game.campaign_stage,
             }
         )
 
@@ -326,6 +333,7 @@ def run():
                     start_rect, quit_rect = renderer.menu_buttons()
                     controls = renderer.menu_controls()
                     if start_rect.collidepoint(event.pos):
+                        sound.play("select")
                         start_runtime()
                         in_menu = False
                         story_scroll_seen = {1: False, 2: False, 3: False}
@@ -334,42 +342,59 @@ def run():
                             story_scroll_ticks = 0
                         renderer.push_log("Desktop mode started.")
                     elif quit_rect.collidepoint(event.pos):
+                        sound.play("click")
                         running = False
                         break
                     elif hasattr(renderer, "_menu_char_naruto_rect") and renderer._menu_char_naruto_rect.collidepoint(event.pos):
+                        sound.play("select")
                         game.selected_char = "naruto"
                         renderer.push_log("Selected Naruto.")
+                        persist_current_settings()
                     elif hasattr(renderer, "_menu_char_sasuke_rect") and renderer._menu_char_sasuke_rect.collidepoint(event.pos):
+                        sound.play("select")
                         game.selected_char = "sasuke"
                         renderer.push_log("Selected Sasuke.")
+                        persist_current_settings()
                     elif hasattr(renderer, "_menu_stage_1_rect") and renderer._menu_stage_1_rect.collidepoint(event.pos):
+                        sound.play("select")
                         game.campaign_stage = 1
                         game.reset_game()
                         renderer.push_log("Selected Stage 1.")
+                        persist_current_settings()
                     elif hasattr(renderer, "_menu_stage_2_rect") and renderer._menu_stage_2_rect.collidepoint(event.pos):
+                        sound.play("select")
                         game.campaign_stage = 2
                         game.reset_game()
                         renderer.push_log("Selected Stage 2.")
+                        persist_current_settings()
                     elif hasattr(renderer, "_menu_stage_3_rect") and renderer._menu_stage_3_rect.collidepoint(event.pos):
+                        sound.play("select")
                         game.campaign_stage = 3
                         game.reset_game()
                         renderer.push_log("Selected Stage 3.")
+                        persist_current_settings()
                     elif controls["perf_prev"].collidepoint(event.pos):
+                        sound.play("click")
                         perf_index = (perf_index - 1) % len(perf_order)
                         apply_performance_preset()
                     elif controls["perf_next"].collidepoint(event.pos):
+                        sound.play("click")
                         perf_index = (perf_index + 1) % len(perf_order)
                         apply_performance_preset()
                     elif controls["cam_prev"].collidepoint(event.pos):
+                        sound.play("click")
                         cam_index = max(0, cam_index - 1)
                         persist_current_settings()
                     elif controls["cam_next"].collidepoint(event.pos):
+                        sound.play("click")
                         cam_index += 1
                         persist_current_settings()
                     elif controls["mirror_toggle"].collidepoint(event.pos):
+                        sound.play("click")
                         cam_mirror = not cam_mirror
                         persist_current_settings()
                     elif controls["reset_settings"].collidepoint(event.pos):
+                        sound.play("click")
                         perf_index = perf_order.index("balanced")
                         cam_index = 0
                         cam_mirror = False
@@ -519,10 +544,12 @@ def run():
                         renderer.push_log("WIN")
                         renderer.trigger_state("bot", "dead", 1.2)
                         renderer.trigger_shake(24.0, 0.6)
+                        sound.play("win")
                     else:
                         renderer.push_log("LOSE")
                         renderer.trigger_state("player", "dead", 1.2)
                         renderer.trigger_shake(24.0, 0.6)
+                        sound.play("lose")
 
                 frame, _ = camera.read_latest() if camera is not None else (None, 0.0)
                 now = time.perf_counter()
@@ -576,22 +603,37 @@ def run():
                     renderer.trigger_state("player", "rasenshuriken", 0.48)
                     renderer.trigger_projectile(player_action)
                     renderer.trigger_shake(16.0, 0.4)
+                    if game.selected_char == "sasuke":
+                        sound.play("katon")
+                    else:
+                        sound.play("rasenshuriken")
                 elif player_action == "rasengan":
                     renderer.trigger_state("player", "attack", 0.36)
                     renderer.trigger_projectile(player_action)
                     renderer.trigger_shake(10.0, 0.28)
+                    if game.selected_char == "sasuke":
+                        sound.play("chidori")
+                    else:
+                        sound.play("rasengan")
                 elif player_action == "kage_bunshin":
                     renderer.trigger_state("player", "kage_bunshin", 0.55)
                     renderer.trigger_shake(5.0, 0.15)
+                    if game.selected_char == "sasuke":
+                        sound.play("sharingan")
+                    else:
+                        sound.play("kage_bunshin")
                 elif player_action == "charge_chakra":
                     renderer.trigger_state("player", "charge", 0.15)
+                    sound.play("charge")
                 elif player_action == "kawarimi":
                     renderer.trigger_state("player", "kawarimi", 0.6)
                     renderer.trigger_shake(12.0, 0.3)
+                    sound.play("kawarimi")
                 
                 if bot_action in ("kunai", "double_kunai"):
                     renderer.trigger_state("bot", "attack", 0.34)
                     renderer.trigger_projectile(bot_action)
+                    sound.play("click")
                 last_event_id = event_id
 
             if block and state.get("player_action") != "kawarimi":
@@ -607,10 +649,12 @@ def run():
                 renderer.trigger_state("player", "hurt", 0.32)
                 renderer.trigger_damage("player", player_dmg)
                 renderer.trigger_shake(8.0, 0.2)
+                sound.play("hurt")
             if bot_dmg > 0:
                 renderer.trigger_state("bot", "hurt", 0.32)
                 renderer.trigger_damage("bot", bot_dmg)
                 renderer.trigger_shake(10.0, 0.22)
+                sound.play("hit")
             prev_player_hp = state.get("player_hp", prev_player_hp)
             prev_bot_hp = state.get("bot_hp", prev_bot_hp)
 
